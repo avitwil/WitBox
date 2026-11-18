@@ -195,3 +195,18 @@ footer nav{display:flex;gap:22px;flex-wrap:wrap}
 .feature .fmedia{min-width:0} .duo .phone{width:min(250px,40vw)}
 html{overflow-x:clip}
 @media (max-width:860px){.feature:nth-of-type(n){grid-template-columns:minmax(0,1fr)} .feature:nth-of-type(n) .ftext{order:0} .nav .wrap{gap:14px} .dlcard.main{grid-column:auto} .dl{grid-template-columns:minmax(0,1fr)} .cta .btn{width:100%;max-width:340px}}
+
+/* intro film on the home page */
+#splash{position:fixed;inset:0;z-index:999;background:#0f0f0f;overflow:hidden;transition:opacity .6s ease,visibility .6s}
+#splash.out{opacity:0;visibility:hidden}
+#splash video{position:absolute;top:50%;left:50%;width:min(100vw,177.78vh);height:auto;transform:translate(-50%,-50%);
+  -webkit-mask-image:linear-gradient(to right,transparent,#000 16%,#000 84%,transparent),linear-gradient(to bottom,transparent,#000 16%,#000 84%,transparent);-webkit-mask-composite:source-in;
+  mask-image:linear-gradient(to right,transparent,#000 16%,#000 84%,transparent),linear-gradient(to bottom,transparent,#000 16%,#000 84%,transparent);mask-composite:intersect}
+@media (max-aspect-ratio:1/1){#splash video{width:165vw}}
+#splash img{display:none;position:absolute;top:50%;left:50%;width:min(330px,66vw);height:auto;margin:0;translate:-50% -50%;animation:splashUp 4.15s cubic-bezier(.16,.84,.3,1) both;
+  -webkit-mask-image:linear-gradient(to right,transparent,#000 14%,#000 86%,transparent),linear-gradient(to bottom,transparent,#000 12%,#000 90%,transparent);-webkit-mask-composite:source-in;
+  mask-image:linear-gradient(to right,transparent,#000 14%,#000 86%,transparent),linear-gradient(to bottom,transparent,#000 12%,#000 90%,transparent);mask-composite:intersect}
+#splash.still video{display:none}#splash.still img{display:block}
+@keyframes splashUp{from{opacity:0;transform:translateY(46px) scale(.9);filter:blur(6px)}to{opacity:1;transform:none;filter:none}}
+@media (prefers-reduced-motion:reduce){#splash img{animation:none}}
+html.intro,html.intro body{overflow:hidden}

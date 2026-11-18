@@ -17,6 +17,20 @@
 <script>(function(){var l;try{l=localStorage.witboxLang}catch(e){}var q=/[?&]lang=(he|en)/.exec(location.search);l=q?q[1]:l||(/^he|^iw/i.test(navigator.language||'')?'he':'en');var d=document.documentElement;d.dataset.lang=l;d.lang=l;d.dir=l==='he'?'rtl':'ltr'})()</script>
 </head>
 <body>
+<div id="splash"><video muted autoplay playsinline preload="auto" disablepictureinpicture disableremoteplayback><source src="img/intro.mp4" type="video/mp4"><source src="img/intro.webm" type="video/webm"></video><img src="img/logo-540.jpg" width="540" height="531" alt="WitBox — by Avi Twil"></div>
+<script>try{if(sessionStorage.witboxIntro)document.getElementById('splash').remove();else sessionStorage.witboxIntro=1}catch(e){}</script>
+<script>(function(){var s=document.getElementById('splash');if(!s)return;var v=s.querySelector('video'),done,fin;
+window.__intro=new Promise(function(r){done=r});
+function end(){if(fin)return;fin=1;done()}
+function still(){if(fin||s.classList.contains('still'))return;s.classList.add('still');try{v.pause()}catch(e){}setTimeout(end,4700)}
+if(!v||!v.canPlayType||matchMedia('(prefers-reduced-motion:reduce)').matches){still();return}
+v.addEventListener('ended',end);v.addEventListener('error',still);
+var last=v.querySelector('source:last-of-type');if(last)last.addEventListener('error',still);
+var p;try{p=v.play()}catch(e){still()}if(p&&p.catch)p.catch(still);
+setTimeout(function(){if(!(v.currentTime>0))still()},3500);
+setTimeout(end,15000);
+s.addEventListener('click',end)})()</script>
+<script>(function(){var d=document.documentElement,s=document.getElementById('splash');if(!s)return;d.classList.add('intro');window.__intro.then(function(){d.classList.remove('intro');s.classList.add('out');setTimeout(function(){s.remove()},750)})})()</script>
 <header class="nav"><div class="wrap">
 <a class="brand" href="index.html"><img src="img/icon-192.png" alt="" width="34" height="34">WitBox</a>
 <nav><a href="index.html#features"><span data-l="he">יכולות</span><span data-l="en">Features</span></a><a href="index.html#private"><span data-l="he">פרטיות</span><span data-l="en">Privacy</span></a><a href="index.html#compare"><span data-l="he">השוואה</span><span data-l="en">Compare</span></a><a href="download.html" class="keep"><span data-l="he">הורדה</span><span data-l="en">Download</span></a><a href="https://github.com/avitwil/WitBox" rel="noopener">GitHub</a></nav>

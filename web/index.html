@@ -12,17 +12,33 @@
 <link rel="stylesheet" href="/app.css">
 <meta name="author" content="Avi Twil">
 <style>
-#splash{position:fixed;inset:0;z-index:999;background:#0e0e0f;display:grid;place-items:center;transition:opacity .55s ease,visibility .55s}
+#splash{position:fixed;inset:0;z-index:999;background:#0f0f0f;overflow:hidden;transition:opacity .6s ease,visibility .6s}
 #splash.out{opacity:0;visibility:hidden}
-#splash img{width:min(330px,66vw);height:auto;animation:splashUp 4.15s cubic-bezier(.16,.84,.3,1) both;
+#splash video{position:absolute;top:50%;left:50%;width:min(100vw,177.78vh);height:auto;transform:translate(-50%,-50%);
+  -webkit-mask-image:linear-gradient(to right,transparent,#000 16%,#000 84%,transparent),linear-gradient(to bottom,transparent,#000 16%,#000 84%,transparent);-webkit-mask-composite:source-in;
+  mask-image:linear-gradient(to right,transparent,#000 16%,#000 84%,transparent),linear-gradient(to bottom,transparent,#000 16%,#000 84%,transparent);mask-composite:intersect}
+@media (max-aspect-ratio:1/1){#splash video{width:165vw}}
+#splash img{display:none;position:absolute;top:50%;left:50%;width:min(330px,66vw);height:auto;margin:0;translate:-50% -50%;animation:splashUp 4.15s cubic-bezier(.16,.84,.3,1) both;
   -webkit-mask-image:linear-gradient(to right,transparent,#000 14%,#000 86%,transparent),linear-gradient(to bottom,transparent,#000 12%,#000 90%,transparent);-webkit-mask-composite:source-in;
   mask-image:linear-gradient(to right,transparent,#000 14%,#000 86%,transparent),linear-gradient(to bottom,transparent,#000 12%,#000 90%,transparent);mask-composite:intersect}
+#splash.still video{display:none}#splash.still img{display:block}
 @keyframes splashUp{from{opacity:0;transform:translateY(46px) scale(.9);filter:blur(6px)}to{opacity:1;transform:none;filter:none}}
 @media (prefers-reduced-motion:reduce){#splash img{animation:none}}
 </style>
 </head>
 <body>
-<div id="splash"><img src="/assets/logo-540.jpg" width="540" height="531" alt="WitBox — by Avi Twil"></div>
+<div id="splash"><video muted autoplay playsinline preload="auto" disablepictureinpicture disableremoteplayback><source src="/assets/intro.mp4" type="video/mp4"><source src="/assets/intro.webm" type="video/webm"></video><img src="/assets/logo-540.jpg" width="540" height="531" alt="WitBox — by Avi Twil"></div>
+<script>(function(){var s=document.getElementById('splash');if(!s)return;var v=s.querySelector('video'),done,fin;
+window.__intro=new Promise(function(r){done=r});
+function end(){if(fin)return;fin=1;done()}
+function still(){if(fin||s.classList.contains('still'))return;s.classList.add('still');try{v.pause()}catch(e){}setTimeout(end,4700)}
+if(!v||!v.canPlayType||matchMedia('(prefers-reduced-motion:reduce)').matches){still();return}
+v.addEventListener('ended',end);v.addEventListener('error',still);
+var last=v.querySelector('source:last-of-type');if(last)last.addEventListener('error',still);
+var p;try{p=v.play()}catch(e){still()}if(p&&p.catch)p.catch(still);
+setTimeout(function(){if(!(v.currentTime>0))still()},3500);
+setTimeout(end,15000);
+s.addEventListener('click',end)})()</script>
 <div id="app" class="app">
   <aside id="sidebar" class="sidebar"></aside>
   <main id="main" class="main"></main>

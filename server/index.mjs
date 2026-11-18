@@ -19,7 +19,7 @@ const VERSION = (() => { try { return fs.readFileSync(path.join(ROOT, 'VERSION')
 const WEB = path.join(ROOT, 'web');
 const DOWNLOADS = path.join(ROOT, 'downloads');
 const NOVNC = [path.join(ROOT, 'vendor/novnc'), '/usr/share/novnc', '/usr/share/webapps/novnc', '/usr/share/noVNC'].find((d) => fs.existsSync(path.join(d, 'core/rfb.js'))) || '/usr/share/novnc';
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.apk': 'application/vnd.android.package-archive', '.exe': 'application/vnd.microsoft.portable-executable', '.pdf': 'application/pdf', '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8', '.csv': 'text/csv; charset=utf-8', '.webmanifest': 'application/manifest+json', '.mp3': 'audio/mpeg', '.wav': 'audio/wav' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.apk': 'application/vnd.android.package-archive', '.exe': 'application/vnd.microsoft.portable-executable', '.pdf': 'application/pdf', '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8', '.csv': 'text/csv; charset=utf-8', '.webmanifest': 'application/manifest+json', '.mp3': 'audio/mpeg', '.mp4': 'video/mp4', '.webm': 'video/webm', '.wav': 'audio/wav' };
 
 const json = (res, code, obj) => { const b = JSON.stringify(obj); res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(b); };
 const readBody = (req, limit = 200 * 1024 * 1024) => new Promise((resolve, reject) => { const chunks = []; let n = 0; req.on('data', (c) => { n += c.length; if (n > limit) { reject(new Error('too large')); req.destroy(); } else chunks.push(c); }); req.on('end', () => resolve(Buffer.concat(chunks))); req.on('error', reject); });
@@ -30,6 +30,14 @@ function sendFile(res, file, { download, req } = {}) {
   if (st.isDirectory()) { res.writeHead(404); return res.end('not found'); }
   const h = { 'content-type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream', 'content-length': st.size, 'cache-control': 'no-cache' };
   if (download) h['content-disposition'] = `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(file))}`;
+  const rg = /^bytes=(\d*)-(\d*)$/.exec(req?.headers.range || ''); // byte ranges: needed by Safari/iOS to play video
+  h['accept-ranges'] = 'bytes';
+  if (rg && (rg[1] || rg[2])) {
+    const start = rg[1] ? Number(rg[1]) : Math.max(0, st.size - Number(rg[2])), end = rg[1] && rg[2] ? Math.min(Number(rg[2]), st.size - 1) : st.size - 1;
+    if (start > end || start >= st.size) { res.writeHead(416, { 'content-range': `bytes */${st.size}` }); return res.end(); }
+    h['content-length'] = end - start + 1; h['content-range'] = `bytes ${start}-${end}/${st.size}`;
+    res.writeHead(206, h); return fs.createReadStream(file, { start, end }).pipe(res);
+  }
   res.writeHead(200, h);
   fs.createReadStream(file).pipe(res);
 }
@@ -348,7 +356,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith('/api/')) return await api(req, res, url);
     if (url.pathname.startsWith('/downloads/')) return sendFile(res, inside(DOWNLOADS, decodeURIComponent(url.pathname.slice(11))), { download: true });
     if (url.pathname.startsWith('/novnc/')) return sendFile(res, inside(NOVNC, decodeURIComponent(url.pathname.slice(7))));
-    if (url.pathname.startsWith('/assets/')) return sendFile(res, inside(path.join(ROOT, 'assets'), decodeURIComponent(url.pathname.slice(8))));
+    if (url.pathname.startsWith('/assets/')) return sendFile(res, inside(path.join(ROOT, 'assets'), decodeURIComponent(url.pathname.slice(8))), { req });
     let f = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname.slice(1));
     return sendFile(res, inside(WEB, f));
   } catch (e) {
