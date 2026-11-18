@@ -327,7 +327,7 @@ function msgEl(m, openKeys = []) {
 }
 
 // ---------------------------------------------------------------- boot
-const hideSplash = () => { const el = document.getElementById('splash'); if (!el) return; setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 700); }, Math.max(0, 1700 - performance.now())); }; // the logo rises, then the app appears
+const hideSplash = () => { const el = document.getElementById('splash'); if (!el) return; setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 700); }, Math.max(0, 4700 - performance.now())); }; // the logo rises, then the app appears
 (async function boot() {
   try { await refresh(); } catch (e) { hideSplash(); document.body.append(h('div', { class: 'empty' }, T('לא ניתן להתחבר לשרת', 'Cannot reach the server'), h('br'), String(e.message))); return; }
   hideSplash();
