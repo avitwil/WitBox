@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launch window background below Android 12 (no system splash screen there): the full
+     WitBox logo centred on the brand background. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/brand_bg" />
+    <item
+        android:width="244dp"
+        android:height="240dp"
+        android:drawable="@drawable/splash_logo"
+        android:gravity="center" />
+</layer-list>

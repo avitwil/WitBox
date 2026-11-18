@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#0B0B0C">
+<meta name="color-scheme" content="dark">
+<title>WitBox</title>
+<link rel="icon" type="image/png" href="/assets/icon-96.png">
+<link rel="apple-touch-icon" href="/assets/icon-192.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/app.css">
+<meta name="author" content="Avi Twil">
+<style>
+#splash{position:fixed;inset:0;z-index:999;background:#0e0e0f;display:grid;place-items:center;transition:opacity .55s ease,visibility .55s}
+#splash.out{opacity:0;visibility:hidden}
+#splash img{width:min(330px,66vw);height:auto;animation:splashUp 1.15s cubic-bezier(.16,.84,.3,1) both;
+  -webkit-mask-image:linear-gradient(to right,transparent,#000 14%,#000 86%,transparent),linear-gradient(to bottom,transparent,#000 12%,#000 90%,transparent);-webkit-mask-composite:source-in;
+  mask-image:linear-gradient(to right,transparent,#000 14%,#000 86%,transparent),linear-gradient(to bottom,transparent,#000 12%,#000 90%,transparent);mask-composite:intersect}
+@keyframes splashUp{from{opacity:0;transform:translateY(46px) scale(.9);filter:blur(6px)}to{opacity:1;transform:none;filter:none}}
+@media (prefers-reduced-motion:reduce){#splash img{animation:none}}
+</style>
+</head>
+<body>
+<div id="splash"><img src="/assets/logo-540.jpg" width="540" height="531" alt="WitBox — by Avi Twil"></div>
+<div id="app" class="app">
+  <aside id="sidebar" class="sidebar"></aside>
+  <main id="main" class="main"></main>
+  <aside id="details" class="details" hidden></aside>
+  <section id="panel" class="panel" hidden></section>
+</div>
+<div id="modal-root"></div>
+<div id="toasts" class="toasts"></div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

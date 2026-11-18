@@ -1,0 +1,27 @@
+# private data and secrets — never commit
+data/
+*.jks
+keystore.properties
+local.properties
+# downloaded / built at install time
+node_modules/
+runtime/
+vendor/novnc/
+tts/models/
+tts/src/
+vm/*.qcow2
+vm/*.img
+vm/*.iso
+vm/*.sock
+vm/*.log
+vm/*.ppm
+# build outputs (published as release assets, not in git)
+downloads/
+dist/
+apps/desktop/target/
+apps/android/.gradle/
+apps/android/build/
+apps/android/app/build/
+*.pyc
+__pycache__/
+.DS_Store

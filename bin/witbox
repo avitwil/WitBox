@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# WitBox control command — created by Avi Twil.
+WITBOX_DIR="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+DIR="$WITBOX_DIR"
+CLAUDE_BIN="$(ls "$DIR"/server/node_modules/@anthropic-ai/claude-agent-sdk-linux-x64*/claude 2>/dev/null | head -n1)"
+url() { tailscale status --json 2>/dev/null | "$DIR/runtime/node/bin/node" -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log("https://"+JSON.parse(s).Self.DNSName.replace(/\.$/,""))}catch{console.log("(Tailscale is not connected)")}})'; }
+case "${1:-status}" in
+  status)
+    echo "WitBox $(cat "$DIR/VERSION" 2>/dev/null) — $DIR"
+    printf 'server:           %s\n' "$(systemctl is-active witbox 2>/dev/null)"
+    printf 'shared computer:  %s%s\n' "$(systemctl is-active witbox-vm 2>/dev/null)" "$([ -f "$DIR/data/vm_ready" ] || echo ' (not built — run: witbox build-vm)')"
+    printf 'claude account:   %s\n' "$("$CLAUDE_BIN" auth status 2>/dev/null | grep -q '"loggedIn": *true' && echo 'signed in' || echo 'NOT signed in — run: witbox login')"
+    printf 'address:          %s\n' "$(url)"
+    tailscale serve status 2>/dev/null | sed 's/^/  /' ;;
+  start)   sudo systemctl start witbox-vm witbox ;;
+  stop)    sudo systemctl stop witbox witbox-vm ;;
+  restart) sudo systemctl restart witbox ;;
+  logs)    shift; journalctl -u witbox "${@:--f}" ;;
+  url)     url ;;
+  login)   "$CLAUDE_BIN" auth login && sudo systemctl restart witbox ;;
+  build-vm) shift; if [ -w /dev/kvm ]; then "$DIR/vm/build-vm.sh" "$@"; else sg kvm -c "$DIR/vm/build-vm.sh $*"; fi && sudo systemctl start witbox-vm ;;
+  update)  curl -fsSL "https://github.com/${WITBOX_REPO:-avitwil/WitBox}/releases/latest/download/install.sh" -o /tmp/witbox-install.sh && bash /tmp/witbox-install.sh --dir "$DIR" --yes ;;
+  uninstall) bash "$DIR/install.sh" --dir "$DIR" --uninstall ;;
+  *) echo "usage: witbox status|start|stop|restart|logs|url|login|build-vm|update|uninstall"; exit 2 ;;
+esac

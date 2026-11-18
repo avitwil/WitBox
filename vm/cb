@@ -1,0 +1,4 @@
+#!/bin/bash
+# usage: cb METHOD /path [json]     (talks to the server's private unix socket)
+HERE="$(cd "$(dirname "$0")" && pwd)"; DATA="${WITBOX_DATA:-$HERE/../data}"
+curl -s --unix-socket "$DATA/server.sock" -X "$1" "http://localhost/api$2" -H 'X-CB: 1' -H 'content-type: application/json' ${3:+-d "$3"}

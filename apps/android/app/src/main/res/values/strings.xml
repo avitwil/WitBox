@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">WitBox</string>
+    <string name="a11y_label">WitBox device control</string>
+    <string name="a11y_summary">Lets your WitBox bots operate this device, only with your permission.</string>
+    <string name="a11y_description">Lets the bots on your own WitBox server control this device: capture the screen, tap, swipe, type text, press Back/Home and open apps.\n\nNothing happens without your consent: each bot is set to Never, Ask or Always inside the WitBox app (default: Never). While a bot is in control a notification with a Stop button is shown. Screen contents are sent only to the WitBox server you configured.</string>
+
+    <string name="err_title">Can\'t reach WitBox</string>
+    <string name="err_body">Is Tailscale connected?\nThe server at %1$s did not respond.</string>
+    <string name="retry">Retry</string>
+    <string name="change_server">Change server</string>
+
+    <string name="server_title">WitBox server</string>
+    <string name="server_label">Server address</string>
+    <string name="server_help">WitBox runs on your own server and is reachable only over your Tailscale network. Enter your server\'s address: https:// with the MagicDNS name, or http:// with a 100.x.y.z tailnet IP.</string>
+    <string name="server_hint" translatable="false">https://my-server.my-tailnet.ts.net</string>
+    <string name="credit">WitBox %1$s · Created by Avi Twil</string>
+    <string name="no_server_title">No server yet</string>
+    <string name="no_server_body">WitBox runs on your own server and is reachable only over your Tailscale network.\nEnter your server\'s address to continue.</string>
+    <string name="set_server">Enter server address</string>
+    <string name="save">Save</string>
+    <string name="clear">Clear</string>
+    <string name="cancel">Cancel</string>
+    <string name="invalid_url">Please enter a valid http(s) address</string>
+
+    <string name="ch_alerts">WitBox alerts</string>
+    <string name="ch_messages">WitBox messages</string>
+    <string name="ch_status">Connection status</string>
+    <string name="ch_ask">Device control requests</string>
+    <string name="ch_active">Device control active</string>
+
+    <string name="status_connected">WitBox connected</string>
+    <string name="status_connecting">WitBox – connecting…</string>
+    <string name="status_text">Listening for bot notifications</string>
+
+    <string name="ask_title">%1$s wants to control this device</string>
+    <string name="ask_body">The bot will be able to see the screen, tap, swipe and type on this device.</string>
+    <string name="allow_once">Allow once (5 min)</string>
+    <string name="allow_always">Always allow</string>
+    <string name="deny">Deny</string>
+
+    <string name="ctl_title">%1$s is controlling this device</string>
+    <string name="ctl_text">Tap to stop</string>
+    <string name="stop">Stop</string>
+    <string name="ctl_stopped">Device control stopped for %1$s</string>
+
+    <string name="download_started">Downloading %1$s to Downloads…</string>
+    <string name="download_failed">Download failed</string>
+    <string name="download_unsupported">This type of download is not supported</string>
+    <string name="no_app_for_link">No app can open this link</string>
+    <string name="a11y_hint">Turn on “WitBox device control” under Installed apps. If it is greyed out: Settings → Apps → WitBox → ⋮ → Allow restricted settings.</string>
+    <string name="file_chooser_title">Choose file</string>
+    <string name="confirm_raise_title">Device control permission</string>
+    <string name="confirm_raise_msg">Allow %1$s to control this device: %2$s?</string>
+    <string name="level_always">Always</string>
+    <string name="level_ask">Ask each time</string>
+    <string name="allow">Allow</string>
+</resources>

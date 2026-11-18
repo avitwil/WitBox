@@ -1,0 +1,38 @@
+#pragma code_page(65001)
+#include <winver.h>
+
+// Icon with the lowest ID is used by Explorer as the exe icon.
+1 ICON "../assets/icon.ico"
+
+// Application manifest: Common Controls v6 (TaskDialog), per-monitor DPI awareness
+// (so screen capture / input coordinates are real pixels), UTF-8, Win10/11 compat.
+1 24 "app.manifest"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     1,1,0,0
+PRODUCTVERSION  1,1,0,0
+FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+FILEFLAGS       0
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",      "Avi Twil"
+            VALUE "FileDescription",  "WitBox"
+            VALUE "FileVersion",      "1.1.0.0"
+            VALUE "InternalName",     "WitBox"
+            VALUE "OriginalFilename", "WitBox-windows-x64.exe"
+            VALUE "ProductName",      "WitBox"
+            VALUE "ProductVersion",   "1.1.0"
+            VALUE "LegalCopyright",   "Created by Avi Twil"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 0x04B0
+    END
+END

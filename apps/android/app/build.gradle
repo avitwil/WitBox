@@ -1,0 +1,86 @@
+plugins {
+    id 'com.android.application'
+}
+
+def keystoreProps = null
+def keystorePropsFile = rootProject.file('keystore.properties')
+if (keystorePropsFile.exists()) {
+    keystoreProps = new Properties()
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+
+android {
+    namespace 'net.witbox.app'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+
+    defaultConfig {
+        applicationId 'net.witbox.app'
+        minSdk 26
+        targetSdk 34
+        versionCode 5
+        versionName '1.1.0'
+    }
+
+    flavorDimensions 'edition'
+    productFlavors {
+        standard {
+            dimension 'edition'
+            buildConfigField 'boolean', 'CONTROL', 'false'
+        }
+        full {
+            dimension 'edition'
+            buildConfigField 'boolean', 'CONTROL', 'true'
+            versionNameSuffix '-full'
+        }
+    }
+
+    signingConfigs {
+        // Release signing is read from <android project>/keystore.properties (not in git):
+        //   storeFile=keystore/witbox.jks
+        //   storePassword=...
+        //   keyAlias=witbox
+        //   keyPassword=...
+        // Without that file the standard Android debug key is used, so anyone can build.
+        if (keystoreProps != null) {
+            release {
+                storeFile rootProject.file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+                enableV1Signing true
+                enableV2Signing true
+                enableV3Signing true
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig keystoreProps != null ? signingConfigs.release : signingConfigs.debug
+        }
+        debug {
+            signingConfig keystoreProps != null ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core:1.13.1'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+}

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Notification small icon: the WitBox "TV box with two antennas" as a pure-alpha silhouette. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- box outline -->
+    <path
+        android:pathData="M6.5,8h11a2.5,2.5 0 0 1 2.5,2.5v7.5a2.5,2.5 0 0 1 -2.5,2.5h-11a2.5,2.5 0 0 1 -2.5,-2.5v-7.5a2.5,2.5 0 0 1 2.5,-2.5z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineJoin="round" />
+    <!-- antennas -->
+    <path
+        android:pathData="M8,3L10.5,7.5M16,3L13.5,7.5"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round" />
+    <!-- side knobs -->
+    <path
+        android:pathData="M1.75,12.5v3.5M22.25,12.5v3.5"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round" />
+    <!-- core -->
+    <path
+        android:pathData="M12,14.25m-2.25,0a2.25,2.25 0 1,0 4.5,0a2.25,2.25 0 1,0 -4.5,0"
+        android:fillColor="#FFFFFFFF" />
+</vector>

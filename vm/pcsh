@@ -1,0 +1,4 @@
+#!/bin/bash
+# usage: pcsh 'command...'   (runs as cbadmin — passwordless sudo — inside the Ubuntu VM)
+HERE="$(cd "$(dirname "$0")" && pwd)"; DATA="${WITBOX_DATA:-$HERE/../data}"
+exec ssh -i "$DATA/vm_key" -p 10022 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o BatchMode=yes cbadmin@127.0.0.1 "$@"

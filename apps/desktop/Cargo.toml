@@ -1,0 +1,63 @@
+[package]
+name = "witbox"
+version = "1.1.0"
+edition = "2021"
+description = "WitBox desktop client (Windows / Linux)"
+build = "build.rs"
+
+[[bin]]
+name = "witbox"
+path = "src/main.rs"
+
+[dependencies]
+wry = "0.57"
+tao = "0.37"
+tray-icon = "0.26"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.23"
+url = "2"
+dirs = "7"
+uuid = { version = "1", features = ["v4"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "1"
+enigo = "0.6"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+webkit2gtk = { version = "=2.0.2", features = ["v2_38"] }
+x11rb = { version = "0.13", features = ["randr"] }
+libloading = "0.8"
+
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.39"
+tauri-winrt-notification = "0.8"
+windows-registry = "0.6"
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+    "Win32_UI_Controls",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+    "UI_Notifications",
+] }
+
+[build-dependencies]
+embed-resource = "3"
+
+# The upstream crate imports WebView2Loader.dll on GNU targets; the vendored copy embeds
+# the loader instead so the exe is a single portable file (see vendor/webview2-com-sys).
+[patch.crates-io]
+webview2-com-sys = { path = "vendor/webview2-com-sys" }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

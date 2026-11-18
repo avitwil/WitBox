@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The default server uses a valid HTTPS certificate (tailscale serve). Cleartext is permitted so that
+     user-entered http://100.x.y.z tailnet addresses also work (traffic is already encrypted by WireGuard). -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
