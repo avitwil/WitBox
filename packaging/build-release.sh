@@ -16,7 +16,6 @@ pack() { # copies the installable tree into $STAGE/witbox
   tar -cf - --exclude=node_modules --exclude='*.qcow2' --exclude='*.img' --exclude='*.iso' --exclude='*.sock' --exclude='*.log' --exclude='*.ppm' \
       server web assets vm bin docs tts/server.py VERSION LICENSE README.md README.he.md install.sh | tar -xf - -C "$STAGE/witbox"
   cp downloads/WitBox.apk downloads/WitBox-full.apk downloads/WitBox-windows-x64.exe downloads/witbox-linux-x86_64 "$STAGE/witbox/downloads/"
-  [ -f downloads/WitBox-Setup.exe ] && cp downloads/WitBox-Setup.exe "$STAGE/witbox/downloads/" || true
 }
 mk() { tar -C "$STAGE" --owner=0 --group=0 --numeric-owner -czf "$DIST/witbox-linux-x86_64.tar.gz" witbox; }
 
