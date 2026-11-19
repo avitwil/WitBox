@@ -418,6 +418,12 @@ server.on('upgrade', (req, socket, head) => {
   });
 });
 
+// First run: start with one main bot so the dashboard and chat are usable right away.
+if (!state.bots.length && !state.settings.seeded) {
+  const en = state.settings.language === 'en';
+  const b = createBot({ name: en ? 'Assistant' : 'עוזר', title: en ? 'Main bot' : 'הבוט הראשי', description: en ? 'Your main bot: handles everyday requests and delegates to the other bots.' : 'הבוט הראשי שלך: מטפל בבקשות היומיום ומחלק משימות לבוטים האחרים.', color: '#f2f2f3', shape: 'circle' });
+  state.settings.mainBotId = b.id; state.settings.seeded = true; save();
+} // (before the socket's restrictive umask below, which would make the new bot's folders unusable)
 // Listen on a private unix socket only (mode 600): nothing on the network — not even other local users or the
 // shared-computer VM (whose NAT can reach the host's loopback TCP ports) — can connect. `tailscale serve` proxies the
 // tailnet HTTPS endpoint to this socket. Set PORT to additionally open a loopback TCP port for development.
@@ -426,12 +432,6 @@ try { fs.unlinkSync(SOCK); } catch {}
 const prevMask = process.umask(0o177);
 server.listen(SOCK, () => { process.umask(prevMask); fs.chmodSync(SOCK, 0o600); console.log('WitBox server on unix:' + SOCK); });
 if (process.env.PORT) http.createServer((q, s) => server.emit('request', q, s)).on('upgrade', (q, s, h) => server.emit('upgrade', q, s, h)).listen(Number(process.env.PORT), '127.0.0.1', () => console.log('dev TCP port ' + process.env.PORT));
-// First run: start with one main bot so the dashboard and chat are usable right away.
-if (!state.bots.length && !state.settings.seeded) {
-  const en = state.settings.language === 'en';
-  const b = createBot({ name: en ? 'Assistant' : 'עוזר', title: en ? 'Main bot' : 'הבוט הראשי', description: en ? 'Your main bot: handles everyday requests and delegates to the other bots.' : 'הבוט הראשי שלך: מטפל בבקשות היומיום ומחלק משימות לבוטים האחרים.', color: '#f2f2f3', shape: 'circle' });
-  state.settings.mainBotId = b.id; state.settings.seeded = true; save();
-}
 if (!process.env.WITBOX_NO_SCHEDULER) routines.startScheduler(); // WITBOX_NO_SCHEDULER=1: demo / development instance, never runs routines on its own
 // First run: nobody is allowed in yet — let in the tailnet user who owns this machine (and nobody else).
 if (!state.settings.allowedLogins?.length) vm.run('tailscale', ['status', '--json'], { timeout: 8000 }).then((r) => { try { const j = JSON.parse(r.stdout); const login = j.User?.[j.Self?.UserID]?.LoginName; if (login) { state.settings.allowedLogins = [login]; save(); console.log('access granted to the tailnet owner: ' + login); } else console.log('could not detect the tailnet owner; add it to settings.allowedLogins in data/state.json'); } catch { console.log('tailscale is not running: nobody can connect until it is, then restart witbox'); } });
