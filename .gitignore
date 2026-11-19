@@ -25,3 +25,4 @@ apps/android/app/build/
 *.pyc
 __pycache__/
 .DS_Store
+media/
