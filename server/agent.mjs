@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { query, tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
-import { state, save, emit, uid, botDir, getBot, addMessage, updateMessage, messages, MODELS, SHARED_DIR, SKILLS_DIR, BRAIN, memFile, journal, DATA, inside, tz } from './store.mjs';
+import os from 'node:os';
+import { state, save, emit, uid, botDir, shareDir, realOf, botFile, getBot, addMessage, updateMessage, messages, MODELS, SHARED_DIR, SKILLS_DIR, BRAIN, memFile, journal, DATA, inside, tz } from './store.mjs';
 import * as vm from './vm.mjs';
 import * as dash from './dashboard.mjs';
 import * as vault from './vault.mjs';
@@ -58,9 +59,16 @@ ${ctx.voice ? '- THIS IS A LIVE VOICE CONVERSATION: the user is speaking to you 
 You have your own desktop on a shared Ubuntu Linux PC (XFCE desktop, user "${bot.pcUser || 'created on first use'}", home /home/${bot.pcUser || '<you>'}${bot.pcSudo ? ', passwordless sudo' : ', no sudo'}). Every bot has a separate user and desktop session on the same machine, all running in parallel; installed apps are shared, and /srv/shared is a folder all bots can read and write. Installed: Google Chrome (google-chrome), Firefox, LibreOffice (Writer/Calc/Impress), a terminal, file manager, Python 3, Node.js, git, ffmpeg, ImageMagick.
 - mcp__bot__computer: see and control your desktop (screenshot, click, type, keys, scroll). Screen is ${vm.DESKTOP_SIZE.W}x${vm.DESKTOP_SIZE.H}; coordinates are pixels in the screenshot. Always take a screenshot before acting and after important steps. One action at a time. In a terminal window paste is ctrl+shift+v.
 - mcp__bot__pc_shell: run a bash script on that PC as your user. Prefer it over clicking for files, downloads and scripts — it is faster and more reliable. It can also open GUI apps on your desktop: start them detached, e.g. \`setsid google-chrome "https://example.com" >/dev/null 2>&1 &\`, then look with mcp__bot__computer.${bot.pcSudo ? ' Install software with sudo apt-get install -y.' : ' You have no sudo: install user-level software only (pip install --user, npm with a prefix in your home, portable binaries); if a system package is needed, tell the user to install it via Settings → Shared computer → "Open as admin" or to give you admin rights in your bot settings.'}
-- mcp__bot__pc_copy: copy files between the PC and your workspace.
+- mcp__bot__pc_copy: copy files between the PC and your workspace (rarely needed — see the shared folders below).
+- Shared folders: three folders exist both in your workspace on the server and on your computer, with the same content at all times (shortcuts are on your desktop):
+  · ./uploads  =  ~/witbox/user-files — everything the user sends you in chat lands here.
+  · ./projects  =  ~/witbox/projects — every coding or building task lives in its own sub-folder here.
+  · ~/witbox/sessions — your Claude Code session logs (read-only).
+- Coding tasks (writing a tool, a script, a site, an app): create and edit the files with Write/Edit under ./projects/<project-name>/, and run everything — installs, builds, tests, the program itself — with mcp__bot__pc_shell inside ~/witbox/projects/<project-name>/. Never look for another place to run code.
+- Every other kind of task (browsing, documents, apps, downloads, installs) is done only on your computer.
+- The shared folders are slow with thousands of small files. Keep dependency folders and caches out of them when the tool allows it (e.g. python3 -m venv ~/.venvs/<project-name>), and keep big downloads in your home folder.
 - Passwords, 2FA codes, CAPTCHAs, payments: never ask for them in chat. Use mcp__bot__secure_input (the user types the secret into a secure form and it is typed into your focused field; you never see it) or mcp__bot__request_takeover (the user takes control of your desktop, completes the step, and hands it back).
-- Your workspace (this working directory) is private storage on the server for notes, downloads and files to send; put deliverables in ./files. You cannot access the rest of the server and you cannot run commands on it — every command, install, build or script runs on your own computer with mcp__bot__pc_shell.
+- Your workspace (this working directory) is private storage on the server: ./files for things you send to the user, small note files at its top level, and the shared folders above. Nothing else may be written on the server. You cannot access the rest of the server and you cannot run commands on it — every command, install, build or script runs on your own computer with mcp__bot__pc_shell.
 
 # Connectors
 Tools named mcp__claude_ai_* are the user's Claude connectors (e.g. Gmail, Google Drive, Calendar and others). Use them for those services instead of the browser. If a connector you need is missing or unauthenticated, tell the user to enable it in the Claude app (claude.ai → Settings → Connectors) — it then appears here automatically.
@@ -111,6 +119,19 @@ ${prefs.trim() || '(empty)'}
 ${mem.trim() || '(empty)'}
 ## Brain note index
 ${brainIndex}`;
+}
+
+// Show the bot's Claude Code session log in its shared "sessions" folder (a hard link: always current, no copy).
+function linkSession(bot) {
+  try {
+    const id = bot.sessionId; if (!id || !/^[\w-]+$/.test(id)) return;
+    const root = path.join(os.homedir(), '.claude', 'projects');
+    const src = fs.readdirSync(root).map((d) => path.join(root, d, id + '.jsonl')).find((f) => fs.existsSync(f)); if (!src) return;
+    const dir = path.join(shareDir(bot.id), 'sessions'); fs.mkdirSync(dir, { recursive: true });
+    if (fs.readdirSync(dir).some((f) => f.endsWith(id + '.jsonl'))) return;
+    const dst = path.join(dir, new Date().toLocaleDateString('sv-SE', { timeZone: tz() }) + '_' + id + '.jsonl');
+    try { fs.linkSync(src, dst); } catch { fs.copyFileSync(src, dst); }
+  } catch (e) { console.error('session link', e.message); }
 }
 
 // ---------------------------------------------------------------- permissions
@@ -200,14 +221,21 @@ const READ_VERBS = /(^|_)(search|get|list|read|fetch|query|find|view|download|de
 
 function canUseToolFor(turn) {
   const bot = turn.bot;
-  const allowedRoots = [botDir(bot.id), BRAIN];
-  const pathOk = (p) => { if (!p) return true; const r = path.resolve(botDir(bot.id), String(p)); return allowedRoots.some((b) => r === b || r.startsWith(b + path.sep)); };
+  // Host-side file tools: read inside the bot's own folders and the Brain; write only into its shared projects /
+  // user-files folders, the Brain, ./files (things to send) and small note files at the top of its workspace.
+  // Paths are compared after resolving symlinks — the shared folder is writable from the bot's computer.
+  const under = (r, b) => r === b || r.startsWith(b + path.sep);
+  const home = realOf(botDir(bot.id)), share = realOf(shareDir(bot.id)), brain = realOf(BRAIN);
+  const readOk = (p) => { if (!p) return true; const r = realOf(path.resolve(botDir(bot.id), String(p))); return under(r, home) || under(r, share) || under(r, brain); };
+  const writeOk = (p) => { if (!p) return false; const r = realOf(path.resolve(botDir(bot.id), String(p))); return under(r, path.join(share, 'projects')) || under(r, path.join(share, 'user-files')) || under(r, brain) || under(r, path.join(home, 'files')) || (path.dirname(r) === home && !['messages.jsonl', 'known.json'].includes(path.basename(r))); };
   return async (toolName, input) => {
     const allow = { behavior: 'allow', updatedInput: input };
     const deny = (message) => ({ behavior: 'deny', message });
     if (toolName.startsWith('mcp__bot__')) return allow; // gated inside each tool
     if (['Read', 'Write', 'Edit', 'Glob', 'Grep', 'NotebookEdit'].includes(toolName)) {
-      return pathOk(input.file_path || input.path || input.notebook_path) ? allow : deny('You can only access files inside your own workspace.');
+      const p = input.file_path || input.path || input.notebook_path;
+      if (['Write', 'Edit', 'NotebookEdit'].includes(toolName)) return writeOk(p) ? allow : deny('On the server you may only write inside ./projects (code and other work — it is also on your desktop), ./uploads, ./files (things to send to the user), the Brain, or a small note file at the top of your workspace. Do everything else on your own computer with mcp__bot__pc_shell / mcp__bot__computer.');
+      return readOk(p) ? allow : deny('You can only access files inside your own workspace.');
     }
     if (['WebSearch', 'WebFetch', 'TodoWrite', 'ToolSearch', 'Skill'].includes(toolName)) return allow;
     if (toolName.startsWith('mcp__')) {
@@ -248,6 +276,7 @@ function botTools(turn) {
       safe(async ({ script, timeout_seconds }) => {
         if (!(await vm.vmStatus()).ready) return errOut('The shared computer is not ready.');
         await vm.ensurePcUser(bot);
+        await vm.ensureShare(bot).catch(() => false);
         await vm.ensureDesktop(bot).catch(() => {}); // so GUI apps started from the shell have a desktop to open on
         const r = await vm.pcExec(script, { user: bot.pcUser, timeout: Math.min(900, timeout_seconds || 120) * 1000 });
         return txt(`exit=${r.code}\n${(r.stdout || '').slice(-12000)}${r.stderr ? '\nSTDERR:\n' + r.stderr.slice(-4000) : ''}`);
@@ -257,7 +286,7 @@ function botTools(turn) {
       { direction: z.enum(['from_pc', 'to_pc']), pc_path: z.string(), workspace_path: z.string() },
       safe(async ({ direction, pc_path, workspace_path }) => {
         await vm.ensurePcUser(bot);
-        const local = inside(botDir(bot.id), workspace_path);
+        const local = botFile(bot.id, workspace_path);
         fs.mkdirSync(path.dirname(local), { recursive: true });
         const remote = `${bot.pcUser}@127.0.0.1:${pc_path}`;
         const r = await vm.run('scp', direction === 'from_pc' ? [...vm.scpArgs(), remote, local] : [...vm.scpArgs(), local, remote], { timeout: 300000 });
@@ -300,6 +329,7 @@ function botTools(turn) {
     tool('send_file', 'Send a file from your workspace to the user as a downloadable attachment in the chat.',
       { path: z.string(), caption: z.string().optional() },
       safe(async ({ path: p, caption }) => {
+        botFile(bot.id, p); // refuses paths that lead outside the workspace
         const full = inside(botDir(bot.id), p);
         const st = fs.statSync(full);
         pushBlock(turn, { type: 'file', name: path.basename(full), path: path.relative(botDir(bot.id), full), size: st.size, caption });
@@ -525,7 +555,7 @@ function buildOpts(bot, turn, ctx, prov, effort, abort, isolated) {
   const server = createSdkMcpServer({ name: 'bot', version: '1.0.0', tools: botTools(turn) });
   const tools = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'TodoWrite', 'ToolSearch'];
   return {
-    model: prov.model, effort, cwd: botDir(bot.id), additionalDirectories: [SHARED_DIR],
+    model: prov.model, effort, cwd: botDir(bot.id), additionalDirectories: [SHARED_DIR, shareDir(bot.id)],
     env: { ...process.env, ...prov.env, MCP_TOOL_TIMEOUT: '1800000', ENABLE_TOOL_SEARCH: 'false' },
     systemPrompt: { type: 'custom', prompt: systemPrompt(bot, ctx), snapshot: false },
     tools, mcpServers: { bot: server }, settingSources: [], permissionMode: 'default', canUseTool: canUseToolFor(turn),
@@ -596,7 +626,7 @@ async function runTurn(bot, text, ctx) {
   emit('status', { botId: bot.id, status: 'thinking' });
 
   let prompt = text + (ctx.promptExtra || '');
-  if (ctx.attachments?.length) prompt += '\n\n[The user attached files, saved in your workspace: ' + ctx.attachments.map((a) => a.path).join(', ') + ' — use the Read tool to view them (images are viewable).]';
+  if (ctx.attachments?.length) prompt += '\n\n[The user attached files, saved in your workspace: ' + ctx.attachments.map((a) => a.path).join(', ') + ' — use the Read tool to view them (images are viewable). On your computer the same files are in ~/witbox/user-files/.]';
 
   let finalText = '', lastEmit = 0, streamBlock = null, pendingEmit = null;
   const flush = () => { pendingEmit = null; lastEmit = Date.now(); if (!turn.hidden) updateMessage(bot.id, msg); };
@@ -622,7 +652,7 @@ async function runTurn(bot, text, ctx) {
     if (!isolated) bot.lastTurnTs = Date.now();
     const baseOpts = buildOpts(bot, turn, ctx, prov, choice.effort, abort, isolated);
     const onMsg = (m) => {
-        if (m.type === 'system' && m.subtype === 'init') { if (!isolated) { bot.sessionId = m.session_id; bot.sessionProvider = prov.provider; save(); } }
+        if (m.type === 'system' && m.subtype === 'init') { if (!isolated) { bot.sessionId = m.session_id; bot.sessionProvider = prov.provider; save(); setTimeout(() => linkSession(bot), 4000); } }
         else if (m.type === 'stream_event' && !m.parent_tool_use_id) {
           const e = m.event;
           if (e.type === 'content_block_start' && e.content_block?.type === 'text') { streamBlock = { type: 'text', text: '' }; msg.blocks.push(streamBlock); }
@@ -740,4 +770,4 @@ export async function connectorStatus(force = false) {
   connCache = { t: Date.now(), v };
   return v;
 }
-export const _test = { connectorGate, askUser };
+export const _test = { connectorGate, askUser, canUseToolFor };

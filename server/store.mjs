@@ -73,6 +73,7 @@ for (const b of state.bots) {
   b.connPerms ||= {}; b.devicePerms ||= {};
   b.perms = { devices: p.devices || 'ask', vault: p.vault || 'ask' };
 }
+fs.mkdirSync(path.join(DATA, 'pcshare'), { recursive: true });
 let saveTimer = null;
 export function save() {
   if (saveTimer) return;
@@ -85,6 +86,39 @@ export function save() {
 }
 
 export const botDir = (id) => path.join(BOTS_DIR, id);
+// Per-bot folder that is shared with that bot's own user on the shared computer (and only with it):
+//   user-files/  what the user uploaded in chat      (workspace: ./uploads)
+//   projects/    code and other work the bot builds  (workspace: ./projects)
+//   sessions/    the bot's Claude Code session logs  (read-only on the bot's computer)
+export const SHARE_DIR = path.join(DATA, 'pcshare');
+export const shareDir = (id) => path.join(SHARE_DIR, id);
+export function ensureBotDirs(id) {
+  for (const d of ['', 'artifacts', 'files', 'teach']) fs.mkdirSync(path.join(botDir(id), d), { recursive: true });
+  for (const d of ['user-files', 'projects', 'sessions']) fs.mkdirSync(path.join(shareDir(id), d), { recursive: true });
+  for (const [name, target] of [['uploads', 'user-files'], ['projects', 'projects']]) {
+    const link = path.join(botDir(id), name), dest = path.join(shareDir(id), target);
+    let st = null; try { st = fs.lstatSync(link); } catch {}
+    if (st?.isSymbolicLink()) continue;
+    if (st?.isDirectory()) { // pre-1.4 workspace folder: move what is in it into the shared folder
+      for (const e of fs.readdirSync(link)) { const to = path.join(dest, e); if (!fs.existsSync(to)) fs.renameSync(path.join(link, e), to); }
+      fs.rmSync(link, { recursive: true, force: true });
+    }
+    fs.symlinkSync(dest, link);
+  }
+}
+// Resolve a path the way the kernel will (following symlinks) — the shared folder is writable from the bot's
+// computer, so a link planted there must never lead a host-side tool to another file on the server.
+export function realOf(p) {
+  let cur = path.resolve(p); const tail = [];
+  for (;;) { try { return path.join(fs.realpathSync(cur), ...tail.reverse()); } catch { tail.push(path.basename(cur)); const up = path.dirname(cur); if (up === cur) return path.resolve(p); cur = up; } }
+}
+const under = (r, base) => r === base || r.startsWith(base + path.sep);
+// A file of this bot's workspace (its private folder or its shared folder), by real path.
+export function botFile(id, rel) {
+  const r = realOf(path.resolve(botDir(id), String(rel || '')));
+  if (!under(r, realOf(botDir(id))) && !under(r, realOf(shareDir(id)))) throw new Error('path outside workspace');
+  return r;
+}
 export const getBot = (id) => state.bots.find((b) => b.id === id);
 
 const COLORS = ['#D97757', '#6C8EEF', '#57B894', '#C792EA', '#E5B454', '#EF6C8E', '#4FB8C9', '#A0A56B'];
@@ -118,7 +152,7 @@ export function createBot(input = {}) {
     hidden: false,
     createdAt: Date.now(), lastActivity: Date.now(), unread: 0,
   };
-  for (const d of ['', 'artifacts', 'uploads', 'files', 'teach']) fs.mkdirSync(path.join(botDir(id), d), { recursive: true });
+  ensureBotDirs(id);
   state.bots.push(bot);
   save();
   emit('bots');
@@ -171,3 +205,5 @@ export function inside(base, rel) {
   if (p !== base && !p.startsWith(base + path.sep)) throw new Error('path outside workspace');
   return p;
 }
+
+for (const b of state.bots) { try { ensureBotDirs(b.id); } catch (e) { console.error('workspace folders', b.id, e.message); } }

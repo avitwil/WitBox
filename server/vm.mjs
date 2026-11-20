@@ -7,7 +7,7 @@ import net from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { DATA, ROOT, CONFIG, state, save, emit, botDir } from './store.mjs';
+import { DATA, ROOT, CONFIG, state, save, emit, botDir, shareDir } from './store.mjs';
 
 const onPath = (bin) => (process.env.PATH || '').split(':').some((d) => d && fs.existsSync(path.join(d, bin)));
 const XFREERDP = ['xfreerdp3', 'xfreerdp'].find(onPath) || 'xfreerdp'; // FreeRDP 3 is the default on newer distributions
@@ -48,7 +48,7 @@ export async function vmStatus() {
 export async function vmStart() {
   if ((await vmStatus()).running) return;
   spawn('setsid', [path.join(ROOT, 'vm', 'run-vm.sh')], { detached: true, stdio: 'ignore' }).unref();
-  vmCache.t = 0;
+  vmCache.t = 0; shared.clear();
 }
 
 const SSH_OPTS = ['-i', KEY, '-o', 'StrictHostKeyChecking=no', '-o', 'UserKnownHostsFile=/dev/null', '-o', 'LogLevel=ERROR', '-o', 'ConnectTimeout=8', '-o', 'BatchMode=yes'];
@@ -81,11 +81,49 @@ export async function ensurePcUser(bot) {
     echo ok`);
   if (!r.stdout.includes('ok')) throw new Error('failed to create the bot user: ' + (r.stderr || r.stdout));
   bot.pcUser = user; bot.pcPass = pass; bot.pcSudoApplied = want; save();
+  shared.delete(bot.id);
 }
+
+// ---- the bot's shared folder ------------------------------------------------
+// The host folder data/pcshare is exported to the VM over virtio-9p (see vm/run-vm.sh) and mounted under a root-only folder.
+// Each bot gets just its own sub-folder, re-exposed with bindfs as its own user: ~/witbox/{user-files,projects,sessions}
+// plus shortcuts on its desktop. Returns false when the VM has no shared folder yet (it was started before 1.4).
+const SHARE_NAMES = () => (state.settings.language === 'en' ? ['User files', 'Projects', 'Claude Code sessions'] : ['קבצי משתמש', 'פרויקטים', 'סשנים של Claude Code']);
+const shared = new Map(); // botId -> last time the mounts were verified
+export async function ensureShare(bot) {
+  if (!bot.pcUser || bot.id === 'admin') return false;
+  if (Date.now() - (shared.get(bot.id) || 0) < 5 * 60000) return true;
+  const u = bot.pcUser, H = `/home/${u}`, B = `/var/lib/witbox/share/${bot.id}`, [n1, n2, n3] = SHARE_NAMES();
+  const r = await pcExec(`
+    command -v bindfs >/dev/null || apt-get install -y -q bindfs >/dev/null 2>&1 || { echo nobindfs; exit 0; }
+    install -d -m 700 -o root -g root /var/lib/witbox; mkdir -p /var/lib/witbox/share   # root-only parent: host uids show through 9p, so no bot user may reach the export itself
+    mountpoint -q /var/lib/witbox/share || mount -t 9p -o trans=virtio,version=9p2000.L,msize=512000 witbox /var/lib/witbox/share 2>/dev/null || { echo noshare; exit 0; }
+    [ -d ${shq(B)} ] || { echo nodir; exit 0; }
+    install -d -o ${u} -g ${u} ${H}/witbox ${H}/Desktop
+    for d in user-files projects sessions; do
+      install -d -o ${u} -g ${u} ${H}/witbox/$d
+      mountpoint -q ${H}/witbox/$d && continue
+      ro=""; [ $d = sessions ] && ro="-r"
+      bindfs $ro -o attr_timeout=1,entry_timeout=1 --force-user=${u} --force-group=${u} --perms=u=rwX:go= --chown-ignore --chgrp-ignore ${shq(B)}/$d ${H}/witbox/$d || { echo mountfail; exit 0; }
+    done
+    ln -sfn ${H}/witbox/user-files ${shq(H + '/Desktop/' + n1)}; ln -sfn ${H}/witbox/projects ${shq(H + '/Desktop/' + n2)}; ln -sfn ${H}/witbox/sessions ${shq(H + '/Desktop/' + n3)}
+    chown -h ${u}:${u} ${shq(H + '/Desktop/' + n1)} ${shq(H + '/Desktop/' + n2)} ${shq(H + '/Desktop/' + n3)}
+    echo shareok`, { timeout: 180000 });
+  const ok = r.stdout.includes('shareok');
+  if (/noshare/.test(r.stdout) && !ensureShare.told) { ensureShare.told = true; emit('share-missing'); }
+  if (ok) shared.set(bot.id, Date.now()); else { shared.delete(bot.id); if (!/noshare/.test(r.stdout)) console.error('shared folder', bot.id, (r.stdout + r.stderr).trim().slice(-300)); }
+  return ok;
+}
+export const forgetShares = () => shared.clear();
 
 export async function removePcUser(bot) {
   if (!bot.pcUser) return;
-  await pcExec(`pkill -KILL -u ${bot.pcUser}; sleep 1; userdel -r ${bot.pcUser}; rm -f /etc/sudoers.d/${bot.pcUser}; true`).catch(() => {});
+  shared.delete(bot.id);
+  // unmount the shared folders first: "userdel -r" must never reach into them
+  await pcExec(`pkill -KILL -u ${bot.pcUser}; sleep 1
+    for d in user-files projects sessions; do umount -l /home/${bot.pcUser}/witbox/$d 2>/dev/null; done
+    if mount | grep -q " /home/${bot.pcUser}/witbox/"; then echo "still mounted, keeping the home folder"; userdel ${bot.pcUser}; else userdel -r ${bot.pcUser}; fi
+    rm -f /etc/sudoers.d/${bot.pcUser}; true`).catch(() => {});
 }
 
 // ---- desktops ---------------------------------------------------------------
@@ -110,7 +148,7 @@ export async function ensureDesktop(bot) {
   if (d) stopDesktop(bot.id);
   const vm = await vmStatus();
   if (!vm.ready) throw new Error('The shared computer is not ready yet (VM ' + (vm.running ? 'is still starting' : 'is off') + ').');
-  if (bot.id !== 'admin') await ensurePcUser(bot);
+  if (bot.id !== 'admin') { await ensurePcUser(bot); await ensureShare(bot).catch(() => false); }
   let n = 100; const used = usedDisplays();
   while (used.has(n) || fs.existsSync(`/tmp/.X11-unix/X${n}`)) n++;
   const disp = ':' + n;

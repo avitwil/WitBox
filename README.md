@@ -220,6 +220,7 @@ A fuller guide (Hebrew) is in [docs/GUIDE.he.md](docs/GUIDE.he.md).
   you switch that on for a specific bot. File tools are confined to the bot's workspace and the Brain.
 - Connector *write* actions (send mail, delete…) ask for approval by default: one card per task, with "allow all for this action", "always allow" and "deny". Text in chat is never treated as approval.
 - Bots cannot run commands on the server at all; every command runs on the bot's own computer.
+- Each bot has one folder shared with its own desktop only — **User files** (what you upload in chat), **Projects** (code it builds) and **Claude Code sessions** (read-only there). On the server the bot may write only there, in the Brain and in its small notes; links planted in the shared folder cannot lead it to other files.
 - Controlling one of your own devices is approved on that device.
 - Vault passwords are encrypted at rest (AES-256-GCM) and are typed into the bot's desktop without ever being sent to the model.
 

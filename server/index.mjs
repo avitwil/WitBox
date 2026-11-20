@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { WebSocketServer } from 'ws';
-import { ROOT, DATA, SHARED_DIR, BRAIN, SKILLS_DIR, memFile, state, save, bus, emit, uid, botDir, getBot, createBot, publicBot, messages, clearMessages, MODELS, EFFORTS, inside } from './store.mjs';
+import { ROOT, DATA, SHARED_DIR, BRAIN, SKILLS_DIR, memFile, state, save, bus, emit, uid, botDir, getBot, createBot, publicBot, messages, clearMessages, MODELS, EFFORTS, inside, shareDir, botFile } from './store.mjs';
 import * as vm from './vm.mjs';
 import * as agent from './agent.mjs';
 import * as routines from './routines.mjs';
@@ -181,6 +181,7 @@ async function api(req, res, url) {
       await dash.removeBot(bot.id);
       state.bots = state.bots.filter((x) => x.id !== bot.id); state.routines = state.routines.filter((r) => r.botId !== bot.id);
       fs.rmSync(botDir(bot.id), { recursive: true, force: true });
+      setTimeout(() => fs.rmSync(shareDir(bot.id), { recursive: true, force: true }), 8000); // after its mounts on the shared computer are gone
       save(); emit('bots'); emit('routines');
       return json(res, 200, { ok: true });
     }
@@ -202,11 +203,13 @@ async function api(req, res, url) {
       const name = path.basename(url.searchParams.get('name') || 'file').replace(/[^\p{L}\p{N}._ -]/gu, '_');
       const rel = path.join('uploads', Date.now() + '-' + name);
       const buf = await readBody(req);
-      fs.writeFileSync(inside(botDir(bot.id), rel), buf);
+      fs.writeFileSync(botFile(bot.id, rel), buf);
+      if (bot.pcUser) vm.vmStatus().then((s) => s.ready && vm.ensureShare(bot)).catch(() => {}); // make sure the folder is on the bot's desktop
       return json(res, 200, { name, path: rel, size: buf.length });
     }
     if (sub === 'file' && M === 'GET') {
-      const f = inside(botDir(bot.id), url.searchParams.get('path') || '');
+      inside(botDir(bot.id), url.searchParams.get('path') || '');
+      const f = botFile(bot.id, url.searchParams.get('path') || '');
       return sendFile(res, f, { download: url.searchParams.get('inline') !== '1' });
     }
     if (sub === 'artifacts' && !seg[3] && M === 'GET') {
@@ -229,7 +232,7 @@ async function api(req, res, url) {
       if (M === 'PUT') { fs.writeFileSync(f, String((await readJson(req)).text || '')); return json(res, 200, { ok: true }); }
     }
     if (sub === 'files' && M === 'GET') {
-      const out = []; const walk = (d, rel) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { if (rel === '' && ['artifacts', 'teach'].includes(e.name)) continue; if (e.name === 'messages.jsonl' || e.name.startsWith('.')) continue; const r = path.join(rel, e.name); if (e.isDirectory()) walk(path.join(d, e.name), r); else { const st = fs.statSync(path.join(d, e.name)); out.push({ path: r, size: st.size, mtime: st.mtimeMs }); } } };
+      const out = []; const walk = (d, rel) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { if (rel === '' && ['artifacts', 'teach'].includes(e.name)) continue; if (e.name === 'messages.jsonl' || e.name.startsWith('.')) continue; const r = path.join(rel, e.name); if (e.isSymbolicLink() && !(rel === '' && ['uploads', 'projects'].includes(e.name))) continue; if (['node_modules', '.git', '__pycache__', '.venv', 'venv'].includes(e.name)) continue; if (out.length > 3000) return; if (e.isDirectory() || e.isSymbolicLink()) walk(path.join(d, e.name), r); else { const st = fs.statSync(path.join(d, e.name)); out.push({ path: r, size: st.size, mtime: st.mtimeMs }); } } };
       try { walk(botDir(bot.id), ''); } catch {}
       return json(res, 200, { files: out.sort((a, b) => b.mtime - a.mtime).slice(0, 300) });
     }
@@ -346,9 +349,10 @@ async function api(req, res, url) {
   if (p === '/vm' && M === 'POST') {
     const b = await readJson(req);
     if (b.action === 'start') await vm.vmStart();
+    if (b.action === 'restart') { vm.stopAllDesktops(); vm.forgetShares(); (async () => { await vm.run('sudo', ['-n', 'systemctl', 'stop', 'witbox-vm'], { timeout: 120000 }); await vm.run('sudo', ['-n', 'systemctl', 'start', 'witbox-vm'], { timeout: 60000 }); })(); return json(res, 200, { started: true }); }
     if (b.action === 'update') { vm.pcExec('apt-get update -q && apt-get -y -q dist-upgrade && apt-get -y -q autoremove', { timeout: 40 * 60000 }).then((r) => devices.notify({ botId: '', botName: 'WitBox', title: r.code === 0 ? 'המחשב המשותף עודכן' : 'עדכון המחשב המשותף נכשל', body: r.code === 0 ? 'כל החבילות מעודכנות.' : (r.stderr || '').slice(-300), priority: 'normal' })); return json(res, 200, { started: true }); }
     if (b.action === 'snapshot' || b.action === 'reset') {
-      const reset = b.action === 'reset'; vm.stopAllDesktops();
+      const reset = b.action === 'reset'; vm.stopAllDesktops(); vm.forgetShares();
       (async () => {
         const img = path.join(ROOT, 'vm/ubuntu.qcow2');
         await vm.run('sudo', ['-n', 'systemctl', 'stop', 'witbox-vm'], { timeout: 120000 });
@@ -448,6 +452,7 @@ if (!state.bots.length && !state.settings.seeded) {
 const SOCK = path.join(DATA, 'server.sock');
 try { fs.unlinkSync(SOCK); } catch {}
 const prevMask = process.umask(0o177);
+bus.on('event', (e) => { if (e.type === 'share-missing') devices.notify({ botId: '', botName: 'WitBox', title: state.settings.language === 'en' ? 'Restart the shared computer' : 'צריך להפעיל מחדש את המחשב המשותף', body: state.settings.language === 'en' ? 'The folders shared between each bot and its computer start working after one restart: Settings → Computer → Restart.' : 'התיקיות המשותפות בין כל בוט למחשב שלו יתחילו לעבוד אחרי הפעלה מחדש אחת: הגדרות ← מחשב ← הפעלה מחדש.', priority: 'normal', url: '/#/settings/computer' }); });
 server.listen(SOCK, () => { process.umask(prevMask); fs.chmodSync(SOCK, 0o600); console.log('WitBox server on unix:' + SOCK); });
 if (process.env.PORT) http.createServer((q, s) => server.emit('request', q, s)).on('upgrade', (q, s, h) => server.emit('upgrade', q, s, h)).listen(Number(process.env.PORT), '127.0.0.1', () => console.log('dev TCP port ' + process.env.PORT));
 if (!process.env.WITBOX_NO_SCHEDULER) routines.startScheduler(); // WITBOX_NO_SCHEDULER=1: demo / development instance, never runs routines on its own

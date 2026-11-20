@@ -52,7 +52,7 @@ runcmd:
   - echo "deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main" > /etc/apt/sources.list.d/mozilla.list
   - apt-get update
   - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xfce4 xfce4-terminal xfce4-taskmanager xfce4-whiskermenu-plugin mousepad ristretto thunar-archive-plugin xarchiver dbus-x11 xrdp xorgxrdp x11-xserver-utils xdg-utils xdg-user-dirs desktop-file-utils adwaita-icon-theme-full greybird-gtk-theme elementary-xfce-icon-theme gvfs gvfs-backends policykit-1 fonts-noto-core fonts-noto-color-emoji fonts-liberation fonts-dejavu culmus hunspell-he
-  - DEBIAN_FRONTEND=noninteractive apt-get install -y firefox libreoffice-writer libreoffice-calc libreoffice-impress libreoffice-gtk3 python3-pip python3-venv git curl wget unzip zip jq ffmpeg imagemagick xdotool xclip nodejs npm atril file-roller
+  - DEBIAN_FRONTEND=noninteractive apt-get install -y bindfs firefox libreoffice-writer libreoffice-calc libreoffice-impress libreoffice-gtk3 python3-pip python3-venv git curl wget unzip zip jq ffmpeg imagemagick xdotool xclip nodejs npm atril file-roller
   - curl -fsSL -o /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && DEBIAN_FRONTEND=noninteractive apt-get install -y /tmp/chrome.deb; rm -f /tmp/chrome.deb
   - DEBIAN_FRONTEND=noninteractive apt-get purge -y xfce4-screensaver light-locker gnome-keyring || true
   - adduser xrdp ssl-cert
