@@ -9,10 +9,11 @@ import * as vm from './vm.mjs';
 import * as dash from './dashboard.mjs';
 import * as vault from './vault.mjs';
 import { notify, listDevices, deviceRequest } from './devices.mjs';
+import { learn, describe, connectorOf, prettyConnector } from './describe.mjs';
 
 const running = new Map();   // botId -> {abort, msg}
 const chains = new Map();    // botId -> Promise (turn queue)
-const approvals = new Map(); // id -> resolve(decision)
+const approvals = new Map(); // id -> { res, turn, connector }
 const secrets = new Map();   // id -> resolve(value)
 
 export const isRunning = (id) => running.has(id);
@@ -59,10 +60,14 @@ You have your own desktop on a shared Ubuntu Linux PC (XFCE desktop, user "${bot
 - mcp__bot__pc_shell: run a bash script on that PC as your user. Prefer it over clicking for files, downloads and scripts — it is faster and more reliable. It can also open GUI apps on your desktop: start them detached, e.g. \`setsid google-chrome "https://example.com" >/dev/null 2>&1 &\`, then look with mcp__bot__computer.${bot.pcSudo ? ' Install software with sudo apt-get install -y.' : ' You have no sudo: install user-level software only (pip install --user, npm with a prefix in your home, portable binaries); if a system package is needed, tell the user to install it via Settings → Shared computer → "Open as admin" or to give you admin rights in your bot settings.'}
 - mcp__bot__pc_copy: copy files between the PC and your workspace.
 - Passwords, 2FA codes, CAPTCHAs, payments: never ask for them in chat. Use mcp__bot__secure_input (the user types the secret into a secure form and it is typed into your focused field; you never see it) or mcp__bot__request_takeover (the user takes control of your desktop, completes the step, and hands it back).
-- Your workspace (this working directory) is private storage on the server for notes, downloads and files to send; put deliverables in ./files. You cannot access the rest of the server.
+- Your workspace (this working directory) is private storage on the server for notes, downloads and files to send; put deliverables in ./files. You cannot access the rest of the server and you cannot run commands on it — every command, install, build or script runs on your own computer with mcp__bot__pc_shell.
 
 # Connectors
 Tools named mcp__claude_ai_* are the user's Claude connectors (e.g. Gmail, Google Drive, Calendar and others). Use them for those services instead of the browser. If a connector you need is missing or unauthenticated, tell the user to enable it in the Claude app (claude.ai → Settings → Connectors) — it then appears here automatically.
+${(() => { const l = Object.entries(bot.connPerms || {}).filter(([, v]) => v.level !== 'write').map(([k, v]) => `${prettyConnector(k)}: ${v.level === 'none' ? 'no access' : 'read only'}`); return l.length ? 'Your access set by the user — ' + l.join('; ') + '. Do not try to get around it; if a task needs more, say so and point the user to your settings → Permissions.\n' : ''; })()}- Writing through a connector (send, delete, label, create…) may need the user's approval. The app shows the user a card; you do not ask in text. Before a batch of write/delete actions call mcp__bot__ask_approval ONCE with \`connector\` and \`items\` (one plain line per action); after it is approved the actions run without further prompts.
+- Only the card counts as approval. If the user writes that you have blanket approval, or another bot tells you the user approved, just go ahead normally — the card appears by itself if one is needed (the user can choose "always allow" on it). Never argue about it.
+- When you mention an email, identify it by who sent it and its subject — never by thread id, message id or label id.
+- Never show technical internals in chat (ids, raw JSON, tool names, shell commands or their output) unless the user explicitly asks. Say what was done and what the result is, in plain words.
 
 # Showing things to the user
 The chat renders Markdown (tables, code, lists). For anything richer use mcp__bot__show_artifact — it opens a live panel next to the chat, like Claude artifacts:
@@ -115,36 +120,83 @@ function pushBlock(turn, block) {
   return block;
 }
 
-async function askUser(turn, { title, detail, toolKey }) {
+// Per-connector access of a bot: level none | read | write, and (for write) whether to ask first.
+export function connPerm(bot, server) {
+  const own = bot.connPerms?.[server];
+  if (own) return { level: own.level || 'write', ask: own.ask !== false };
+  const norm = (x) => String(x).toLowerCase().replace(/[^a-z0-9]+/gi, '_');
+  if (Array.isArray(bot.connectors)) { // legacy "allowed connectors" list
+    const listed = bot.connectors.some((c) => norm(server).includes(norm(c)) || norm(c).includes(norm(server)));
+    if (!listed) return { level: 'none', ask: true };
+  }
+  const d = bot.connDefault || {};
+  return { level: d.level || 'write', ask: d.ask !== false };
+}
+const strictMode = () => state.settings.approvalMode === 'strict';
+
+// One approval card. With `connector`, the card covers the whole task: "allow all for this action" lets every
+// further write to that connector in this turn through, "always" flips the connector's switch in the bot settings.
+async function askUser(turn, { title, detail, items, toolKey, connector }) {
   const bot = turn.bot;
-  if (toolKey && bot.allowTools?.includes(toolKey)) return 'allow';
+  if (toolKey && !connector && bot.allowTools?.includes(toolKey)) return 'allow';
   turn.reveal?.();
-  const block = pushBlock(turn, { type: 'approval', id: uid(10), title, detail: String(detail || '').slice(0, 1500), status: 'pending', toolKey });
+  const mode = connector ? (strictMode() ? 'single' : 'task') : 'plain';
+  const block = pushBlock(turn, { type: 'approval', id: uid(10), title, detail: String(detail || '').slice(0, 1500), items: (items || []).filter(Boolean).slice(0, 60), status: 'pending', toolKey: connector ? undefined : toolKey, connector: connector ? prettyConnector(connector) : undefined, mode });
   setStatus(turn, 'waiting');
   notify({ botId: bot.id, botName: bot.name, title: `${bot.name} מבקש אישור`, body: title, priority: 'high' });
-  const decision = await new Promise((res) => {
-    approvals.set(block.id, res);
+  let decision = await new Promise((res) => {
+    approvals.set(block.id, { res, block, turn });
     turn.abort.signal.addEventListener('abort', () => res('deny'));
     setTimeout(() => res('timeout'), 30 * 60000);
   });
   approvals.delete(block.id);
-  block.status = decision === 'always' ? 'always' : decision === 'allow' ? 'allowed' : decision === 'timeout' ? 'timeout' : 'denied';
-  if (decision === 'always' && toolKey) { (bot.allowTools ||= []).push(toolKey); save(); }
+  if (mode === 'single' && (decision === 'task' || decision === 'always')) decision = 'allow';
+  if (mode === 'plain' && decision === 'task') decision = 'allow';
+  block.status = decision === 'always' ? 'always' : decision === 'task' ? 'task' : decision === 'allow' ? 'allowed' : decision === 'timeout' ? 'timeout' : 'denied';
+  if (decision === 'always') {
+    if (connector) { (bot.connPerms ||= {})[connector] = { level: 'write', ask: false }; save(); emit('bots'); }
+    else if (toolKey) { (bot.allowTools ||= []).push(toolKey); save(); emit('bots'); }
+  }
   updateMessage(bot.id, turn.msg);
   setStatus(turn, 'working');
-  return decision === 'always' ? 'allow' : decision === 'allow' ? 'allow' : 'deny';
+  return ['always', 'task', 'allow'].includes(decision) ? decision : 'deny';
 }
-export function resolveApproval(id, decision) { const r = approvals.get(id); if (r) r(decision); return !!r; }
+export function resolveApproval(id, decision) { const r = approvals.get(id); if (r) r.res(decision); return !!r; }
 export function resolveSecret(id, value) { const r = secrets.get(id); if (r) r(value); return !!r; }
 
+// Approval for a write to a connector. Calls that arrive while a card for the same connector is open join that card.
+async function connectorGate(turn, server, toolName, d) {
+  const bot = turn.bot, verb = d.label.split(' · ').slice(1).join(' · '), line = `${verb}: ${d.item || (state.settings.language === 'en' ? 'an item whose details are not known' : 'פריט שפרטיו לא ידועים')}`;
+  for (;;) {
+    if (turn.denied?.has(server)) return false;
+    if (!strictMode() && (turn.granted?.has(server) || !connPerm(bot, server).ask || bot.allowTools?.includes(toolName))) return true;
+    const open = turn.asking?.get(server);
+    if (!open || strictMode()) break;
+    if (open.block && open.block.status === 'pending' && open.block.items.length < 60) { open.block.items.push(line); updateMessage(bot.id, turn.msg); }
+    await open.promise;
+  }
+  const entry = { block: null, promise: null };
+  (turn.asking ||= new Map()).set(server, entry);
+  entry.promise = (async () => {
+    const p = askUser(turn, { title: d.label.split(' · ')[0], items: [line], connector: server, toolKey: toolName });
+    entry.block = turn.msg.blocks[turn.msg.blocks.length - 1];
+    return p;
+  })();
+  const decision = await entry.promise;
+  if (turn.asking.get(server) === entry) turn.asking.delete(server);
+  if (decision === 'task' || decision === 'always') (turn.granted ||= new Set()).add(server);
+  if (decision === 'deny' && !strictMode()) (turn.denied ||= new Set()).add(server);
+  return decision !== 'deny';
+}
+
+// level: always | ask | never (vault and similar). Strict mode asks even when the level is "always".
 async function gate(turn, level, ask) {
-  if (level === 'always' && state.settings.approvalMode !== 'strict') return true;
+  if (level === 'always' && !strictMode()) return true;
   if (level === 'never') return false;
-  return (await askUser(turn, ask)) === 'allow';
+  return (await askUser(turn, ask)) !== 'deny';
 }
 
 const READ_VERBS = /(^|_)(search|get|list|read|fetch|query|find|view|download|describe|lookup|check|status|export|guide)(_|$)/i;
-const connectorOf = (name) => (name.match(/^mcp__(.+?)__/) || [])[1] || '';
 
 function canUseToolFor(turn) {
   const bot = turn.bot;
@@ -158,19 +210,14 @@ function canUseToolFor(turn) {
       return pathOk(input.file_path || input.path || input.notebook_path) ? allow : deny('You can only access files inside your own workspace.');
     }
     if (['WebSearch', 'WebFetch', 'TodoWrite', 'ToolSearch', 'Skill'].includes(toolName)) return allow;
-    if (toolName === 'Bash') {
-      const ok = await gate(turn, bot.perms.hostShell || 'never', { title: 'להריץ פקודה על שרת הלינוקס', detail: input.command, toolKey: null });
-      return ok ? allow : deny('Running commands on the host server is not permitted for this bot. Use mcp__bot__pc_shell on your own PC instead.');
-    }
     if (toolName.startsWith('mcp__')) {
-      const server = connectorOf(toolName);
-      if (Array.isArray(bot.connectors) && !bot.connectors.some((c) => server.toLowerCase().includes(c.toLowerCase().replace(/[^a-z0-9]+/gi, '_')) || c.toLowerCase().replace(/[^a-z0-9]+/gi, '_').includes(server.toLowerCase()))) {
-        return deny(`The connector "${server}" is not enabled for this bot.`);
-      }
+      const server = connectorOf(toolName), cp = connPerm(bot, server), nice = prettyConnector(server);
+      if (cp.level === 'none') return deny(`The connector "${nice}" is turned off for this bot. Tell the user they can turn it on in this bot's settings → Permissions.`);
       const short = toolName.split('__').pop();
       if (turn.readOnly?.has(toolName) || (!turn.readOnly?.size && READ_VERBS.test(short))) return allow;
-      const ok = await gate(turn, bot.perms.connectorWrite || 'ask', { title: `${server.replace(/^claude_ai_/, '').replace(/_/g, ' ')}: ${short.replace(/_/g, ' ')}`, detail: JSON.stringify(input, null, 1), toolKey: toolName });
-      return ok ? allow : deny('The user did not approve this action.');
+      if (cp.level === 'read') return deny(`This bot has read-only access to "${nice}". Do not retry. Tell the user they can allow writing in this bot's settings → Permissions.`);
+      const ok = await connectorGate(turn, server, toolName, describe(bot.id, toolName, input));
+      return ok ? allow : deny('The user did not approve this action. Do not retry it or similar actions in this turn; tell the user briefly.');
     }
     return deny('Tool not available.');
   };
@@ -189,7 +236,6 @@ function botTools(turn) {
     tool('computer', 'Control your own desktop (Ubuntu, XFCE). Actions: screenshot | click | double_click | right_click | move | drag (x,y → x2,y2) | type (text) | key (keys e.g. "ctrl+c", "Return", "ctrl+l", "alt+F4", "super") | scroll (direction up/down/left/right, amount) | wait (seconds). Every action returns a fresh screenshot.',
       { action: z.enum(['screenshot', 'click', 'double_click', 'right_click', 'move', 'drag', 'type', 'key', 'scroll', 'wait']), x: z.number().optional(), y: z.number().optional(), x2: z.number().optional(), y2: z.number().optional(), text: z.string().optional(), keys: z.string().optional(), direction: z.enum(['up', 'down', 'left', 'right']).optional(), amount: z.number().optional(), seconds: z.number().optional() },
       safe(async (a) => {
-        if (!(await gate(turn, bot.perms.computer, { title: 'שימוש במחשב (שולחן העבודה של הבוט)', detail: JSON.stringify(a), toolKey: 'computer' }))) return errOut('The user did not allow computer use.');
         setStatus(turn, 'computer');
         await vm.ensureDesktop(bot);
         if (vm.desktopInfo(bot.id).takeover) { await vm.waitTakeoverEnd(bot.id); }
@@ -200,10 +246,9 @@ function botTools(turn) {
     tool('pc_shell', 'Run a bash script on the shared Ubuntu PC as your own Linux user. Returns stdout/stderr. DISPLAY points at your desktop, so detached GUI apps (setsid app >/dev/null 2>&1 &) open there. Use for files, downloads, scripting, installs.',
       { script: z.string(), timeout_seconds: z.number().optional() },
       safe(async ({ script, timeout_seconds }) => {
-        if (!(await gate(turn, bot.perms.shell, { title: 'הרצת פקודה במחשב של הבוט', detail: script, toolKey: 'pc_shell' }))) return errOut('The user did not allow this command.');
         if (!(await vm.vmStatus()).ready) return errOut('The shared computer is not ready.');
         await vm.ensurePcUser(bot);
-        if (bot.perms.computer !== 'never') await vm.ensureDesktop(bot).catch(() => {}); // so GUI apps started from the shell have a desktop to open on
+        await vm.ensureDesktop(bot).catch(() => {}); // so GUI apps started from the shell have a desktop to open on
         const r = await vm.pcExec(script, { user: bot.pcUser, timeout: Math.min(900, timeout_seconds || 120) * 1000 });
         return txt(`exit=${r.code}\n${(r.stdout || '').slice(-12000)}${r.stderr ? '\nSTDERR:\n' + r.stderr.slice(-4000) : ''}`);
       })),
@@ -333,9 +378,23 @@ function botTools(turn) {
         return { content: [{ type: 'text', text: 'The user handed the desktop back.' }, await shot()] };
       })),
 
-    tool('ask_approval', 'Ask the user to approve an action before you take it (required by the approval rules, or whenever an action is risky or irreversible). Returns whether it was approved.',
-      { title: z.string(), detail: z.string().optional() },
-      safe(async ({ title, detail }) => ((await askUser(turn, { title, detail: detail || '' })) === 'allow' ? txt('approved') : errOut('The user did not approve this.')))),
+    tool('ask_approval', 'Ask the user to approve before you act. Use it (1) when the approval rules require it or an action is risky or irreversible, and (2) ONCE before a batch of write/delete actions through a connector: pass `connector` (e.g. "Gmail") and `items` — one short plain-language line per planned action, the way a person would say it (for mail: what you will do, the subject and the sender; never ids or technical terms). When approved, those actions run without further prompts in this turn.',
+      { title: z.string(), detail: z.string().optional(), connector: z.string().optional(), items: z.array(z.string()).optional() },
+      safe(async ({ title, detail, connector, items }) => {
+        const norm = (x) => String(x).toLowerCase().replace(/[^a-z0-9]+/g, '');
+        const server = connector ? (turn.connectors || []).map((c) => c.name.replace(/[^a-zA-Z0-9_-]/g, '_')).find((n) => norm(n).includes(norm(connector))) : null;
+        if (server) {
+          const cp = connPerm(bot, server);
+          if (cp.level !== 'write') return errOut(`This bot may not write to ${prettyConnector(server)} (bot settings → Permissions).`);
+          if (turn.denied?.has(server)) return errOut('The user did not approve this.');
+          if (!strictMode() && (!cp.ask || turn.granted?.has(server))) return txt('approved');
+          const d = await askUser(turn, { title: `${prettyConnector(server)}: ${title}`, detail, items, connector: server });
+          if (d === 'deny') { if (!strictMode()) (turn.denied ||= new Set()).add(server); return errOut('The user did not approve this. Do not perform these actions.'); }
+          if (d === 'task' || d === 'always') (turn.granted ||= new Set()).add(server);
+          return txt('approved');
+        }
+        return (await askUser(turn, { title, detail: detail || '', items })) !== 'deny' ? txt('approved') : errOut('The user did not approve this.');
+      })),
 
     tool('vault_list', "List the user's vault: saved logins (site, username — never the password) and contact details.", {},
       safe(async () => txt(JSON.stringify(vault.forBot(), null, 1)))),
@@ -375,9 +434,14 @@ function botTools(turn) {
     tool('device_control', 'Control one of the user\'s own devices through the WitBox app (the device itself approves or denies). action.type: screenshot | click {x,y,button,double} | move | drag {x1,y1,x2,y2} | scroll {x,y,dx,dy} | type {text} | key {keys}; Android also: tap, swipe {x1,y1,x2,y2,ms}, global {name: back|home|recents|notifications}, open_app {package}. Coordinates are pixels of the last screenshot.',
       { device: z.string().describe('device id or name'), action: z.object({ type: z.string() }).passthrough() },
       safe(async ({ device, action }) => {
-        if (bot.perms.devices === 'never') return errOut('This bot is not allowed to control user devices (bot setting).');
         const d = listDevices().find((x) => x.id === device) || listDevices().find((x) => (x.name || '').toLowerCase().includes(device.toLowerCase()));
         if (!d) return errOut('device not found');
+        const level = bot.devicePerms?.[d.id] || bot.perms.devices || 'ask';
+        if (level === 'never') return errOut('This bot is not allowed to control this device (bot settings → Permissions).');
+        if ((level === 'ask' || strictMode()) && !turn.devicesOk?.has(d.id)) {
+          if ((await askUser(turn, { title: (state.settings.language === 'en' ? 'Control the device: ' : 'שליטה במכשיר: ') + (d.name || d.id) })) === 'deny') return errOut('The user did not allow controlling this device.');
+          (turn.devicesOk ||= new Set()).add(d.id);
+        }
         setStatus(turn, 'device');
         const r = await deviceRequest(d.id, bot, action);
         if (r.image) return { content: [{ type: 'image', data: r.image, mimeType: 'image/jpeg' }, { type: 'text', text: `screenshot ${r.width}x${r.height}` }] };
@@ -460,7 +524,6 @@ const sessionFresh = (bot, provider) => !bot.sessionId || bot.sessionProvider !=
 function buildOpts(bot, turn, ctx, prov, effort, abort, isolated) {
   const server = createSdkMcpServer({ name: 'bot', version: '1.0.0', tools: botTools(turn) });
   const tools = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'TodoWrite', 'ToolSearch'];
-  if ((bot.perms.hostShell || 'never') !== 'never') tools.push('Bash');
   return {
     model: prov.model, effort, cwd: botDir(bot.id), additionalDirectories: [SHARED_DIR],
     env: { ...process.env, ...prov.env, MCP_TOOL_TIMEOUT: '1800000', ENABLE_TOOL_SEARCH: 'false' },
@@ -573,7 +636,9 @@ async function runTurn(bot, text, ctx) {
               finalText = c.text;
             } else if (c.type === 'tool_use') {
               const inp = { ...c.input }; if (typeof inp.content === 'string' && inp.content.length > 600) inp.content = inp.content.slice(0, 600) + '…';
-              msg.blocks.push({ type: 'tool', id: c.id, name: c.name, input: inp, status: 'running' });
+              const blk = { type: 'tool', id: c.id, name: c.name, input: inp, status: 'running' };
+              if (c.name.startsWith('mcp__') && !c.name.startsWith('mcp__bot__')) { const d = describe(bot.id, c.name, c.input || {}); blk.label = d.label; if (d.item) blk.item = d.item; }
+              msg.blocks.push(blk);
               setStatus(turn, c.name.includes('computer') ? 'computer' : 'working');
             }
           }
@@ -585,6 +650,7 @@ async function runTurn(bot, text, ctx) {
             if (!b) continue;
             b.status = c.is_error ? 'error' : 'done';
             const t = Array.isArray(c.content) ? c.content.filter((x) => x.type === 'text').map((x) => x.text).join('\n') : String(c.content || '');
+            if (!c.is_error && b.name.startsWith('mcp__') && !b.name.startsWith('mcp__bot__')) learn(bot.id, b.name, t);
             b.result = t.slice(0, 700);
             if (Array.isArray(c.content) && c.content.some((x) => x.type === 'image')) b.hasImage = true;
           }
@@ -670,7 +736,8 @@ export async function connectorStatus(force = false) {
   } catch (e) { console.error('connectorStatus', e.message); }
   release(); try { ac.abort(); } catch {}
   (async () => { try { for await (const _ of q) {} } catch {} })();
-  const v = st.map((s) => ({ name: s.name.replace(/^claude\.ai /, ''), status: s.status, tools: (s.tools || []).length, error: s.error }));
+  const v = st.filter((s) => s.name !== 'bot').map((s) => ({ key: s.name.replace(/[^a-zA-Z0-9_-]/g, '_'), name: s.name.replace(/^claude\.ai /, ''), status: s.status, tools: (s.tools || []).length, error: s.error }));
   connCache = { t: Date.now(), v };
   return v;
 }
+export const _test = { connectorGate, askUser };

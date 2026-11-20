@@ -91,7 +91,7 @@ browser on your tailnet). Start a task at your desk, follow it from your phone, 
 ### And also
 - **Voice chat** that answers like a phone call (with a natural, fully local Hebrew voice as an option).
 - **Connectors** — Gmail, Calendar, Drive and everything else connected to your Claude account, available to the bots.
-- **Permissions you control** — always / ask me / never per capability, plus plain-language approval rules.
+- **Permissions you control** — per connector: no access / read only / read, write and delete; per device: always / ask me / never; plus plain-language rules. One approval card per task, in plain words (who sent the email and its subject — never ids or raw data).
 - **Vault** — saved logins are encrypted on your server and typed for the bot; the model never sees a password.
 - **Artifacts** — boards, sheets, documents and diagrams open in a panel next to the chat.
 - **Device control** — optionally let a bot operate the phone or PC you are holding; approved on that device only.
@@ -218,7 +218,8 @@ A fuller guide (Hebrew) is in [docs/GUIDE.he.md](docs/GUIDE.he.md).
 - Requests must carry the Tailscale identity of the owner (detected on first start, shown in Settings → General). Anyone else gets 403.
 - Bots work on their own desktop with their own unprivileged Linux user. They cannot run commands on the host unless
   you switch that on for a specific bot. File tools are confined to the bot's workspace and the Brain.
-- Connector *write* actions (send mail, delete…) ask for approval by default.
+- Connector *write* actions (send mail, delete…) ask for approval by default: one card per task, with "allow all for this action", "always allow" and "deny". Text in chat is never treated as approval.
+- Bots cannot run commands on the server at all; every command runs on the bot's own computer.
 - Controlling one of your own devices is approved on that device.
 - Vault passwords are encrypted at rest (AES-256-GCM) and are typed into the bot's desktop without ever being sent to the model.
 

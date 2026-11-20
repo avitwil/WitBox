@@ -164,7 +164,7 @@ home = f'''
     {card('phone', 'שרת אחד, כל המכשירים', 'One server, every device', 'אפליקציות ל-Android, ל-Windows ול-Linux, וגם כל דפדפן. הכול מסונכרן בזמן אמת.', 'Apps for Android, Windows and Linux, plus any browser. Everything in sync, live.')}
     {card('wave', 'שיחת קול', 'Voice chat', 'מדברים עם הבוט כמו בטלפון. קול עברי טבעי שרץ מקומית, כאפשרות.', 'Talk to a bot like on a phone call. A natural local Hebrew voice is optional.')}
     {card('cloud', 'קונקטורים', 'Connectors', 'Gmail, יומן, Drive וכל מה שמחובר לחשבון ה-Claude שלכם זמין לבוטים.', 'Gmail, Calendar, Drive and everything connected to your Claude account.')}
-    {card('shield', 'הרשאות בשליטתכם', 'Permissions you control', 'תמיד / שאל אותי / אף פעם לכל יכולת, וכללי אישור בשפה חופשית.', 'Always / ask me / never per capability, and approval rules in plain language.')}
+    {card('shield', 'הרשאות בשליטתכם', 'Permissions you control', 'לכל קונקטור: ללא גישה, קריאה בלבד או קריאה וכתיבה. כרטיס אישור אחד למשימה, בשפה רגילה: ממי המייל ומה הנושא, בלי מידע טכני.', 'Per connector: no access, read only, or read and write. One approval card per task, in plain words: who sent the email and its subject, no technical data.')}
     {card('lock', 'כספת מוצפנת', 'Encrypted vault', 'פרטי התחברות נשמרים מוצפנים על השרת שלכם ומוקלדים עבור הבוט.', 'Logins are stored encrypted on your server and typed for the bot.')}
     {card('hand', 'שליטה במכשיר', 'Device control', 'אפשר לתת לבוט להפעיל את הטלפון או המחשב שבידכם, באישור מהמכשיר עצמו.', 'Let a bot operate the phone or PC in your hands, approved on that device.')}
   </div>

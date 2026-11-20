@@ -66,18 +66,69 @@ export function botSettings(bot, startTab = 'profile') {
       drawM(); drawE();
     }
     else if (tab === 'perms') {
-      const row = (k, title, sub) => h('div', { class: 'card' }, h('div', { class: 'row wrap' }, h('div', { class: 'grow' }, h('b', {}, title), h('div', { class: 'tiny' }, sub)), seg(levels(), bot.perms[k] || 'ask', (v) => save({ perms: { [k]: v } }))));
+      // Nothing here is saved until "Save changes": everything edits a draft.
+      const snap = () => JSON.stringify({ c: bot.connPerms || {}, cd: bot.connDefault || { level: 'write', ask: true }, dp: bot.devicePerms || {}, p: { devices: bot.perms?.devices || 'ask', vault: bot.perms?.vault || 'ask' }, sudo: !!bot.pcSudo, rules: bot.rules || '', at: bot.allowTools || [] });
+      const d = JSON.parse(snap());
+      let conns = null;
+      const norm = (x) => String(x).toLowerCase().replace(/[^a-z0-9]+/gi, '_');
+      const cp = (key) => d.c[key] || (Array.isArray(bot.connectors) && !bot.connectors.some((c) => norm(key).includes(norm(c)) || norm(c).includes(norm(key))) ? { level: 'none', ask: true } : d.cd);
+      const bar = h('div', { class: 'savebar' });
+      const paintBar = () => { const dirty = JSON.stringify(d) !== snap(); bar.classList.toggle('on', dirty); bar.replaceChildren(...(dirty ? [h('span', { class: 'grow small' }, T('יש שינויים שלא נשמרו', 'Unsaved changes')), h('button', { class: 'btn sm', onclick: () => draw() }, T('בטל', 'Cancel')), h('button', { class: 'btn sm primary', onclick: doSave }, T('שמור שינויים', 'Save changes'))] : [])); };
+      const connBox = h('div'), devBox = h('div'), tagBox = h('div');
+      const CL = () => [['none', T('ללא גישה', 'No access')], ['read', T('קריאה בלבד', 'Read only')], ['write', T('קריאה, כתיבה ומחיקה', 'Read, write and delete')]];
+      const drawConns = () => connBox.replaceChildren(h('div', { class: 'card' }, h('b', {}, T('קונקטורים', 'Connectors')), h('div', { class: 'tiny', style: { marginBottom: '6px' } }, T('מה הבוט רשאי לעשות בכל שירות שמחובר לחשבון ה-Claude שלך', 'What this bot may do in each service connected to your Claude account')),
+        ...(conns === null ? [h('div', { class: 'small muted' }, T('בודק קונקטורים…', 'Checking connectors…'))] : !conns.length ? [h('div', { class: 'small muted' }, T('אין קונקטורים מחוברים. מחברים אותם באפליקציית Claude (Settings ← Connectors).', 'No connectors yet. Connect them in the Claude app (Settings → Connectors).'))]
+          : conns.map((c) => { const v = cp(c.key); return h('div', { class: 'prow' }, h('div', { class: 'row wrap' }, h('div', { class: 'grow' }, h('b', {}, c.name), c.status !== 'connected' ? h('span', { class: 'pill warn', style: { marginInlineStart: '8px' } }, T('לא מחובר', 'not connected')) : null), seg(CL(), v.level, (lv) => { d.c[c.key] = { level: lv, ask: cp(c.key).ask }; drawConns(); paintBar(); })),
+            v.level === 'write' ? h('div', { class: 'row wrap', style: { marginTop: '8px' } }, h('div', { class: 'grow tiny' }, T('לפני כתיבה ומחיקה', 'Before writing or deleting')), seg([['ask', T('שאל אותי', 'Ask me')], ['always', T('אפשר תמיד', 'Always allow')]], v.ask ? 'ask' : 'always', (x) => { d.c[c.key] = { level: 'write', ask: x === 'ask' }; paintBar(); })) : null); }))));
+      const drawDevs = () => devBox.replaceChildren(h('div', { class: 'card' }, h('div', { class: 'row wrap' }, h('div', { class: 'grow' }, h('b', {}, T('שליטה במכשירים שלי', 'Control my devices')), h('div', { class: 'tiny' }, T('המחשבים והטלפונים שמריצים את האפליקציה. כל מכשיר מאשר גם בנפרד מתוכו', 'PCs and phones running the app. Each device also approves locally'))), seg(levels(), d.p.devices, (v) => { d.p.devices = v; drawDevs(); paintBar(); })),
+        ...(S.devices || []).map((dev) => h('div', { class: 'prow' }, h('div', { class: 'row wrap' }, h('div', { class: 'grow' }, h('b', { dir: 'auto' }, dev.name || dev.id), h('div', { class: 'tiny' }, (dev.platform || '') + (dev.online ? ' · ' + T('מחובר', 'online') : ''))), seg(levels(), d.dp[dev.id] || d.p.devices, (v) => { d.dp[dev.id] = v; paintBar(); }))))));
+      const drawTags = () => tagBox.replaceChildren(...(d.at.length ? [h('div', { class: 'card' }, h('b', {}, T('פעולות שאושרו "תמיד"', 'Always-allowed actions')), h('div', { class: 'row wrap', style: { marginTop: '8px' } }, d.at.map((t) => h('span', { class: 'tag' }, t.split('__').slice(-2).join(' · ').replace(/^claude_ai_/, '').replace(/_/g, ' '), h('button', { onclick: () => { d.at = d.at.filter((x) => x !== t); drawTags(); paintBar(); } }, '✕')))))] : []));
+      const line = (c) => {
+        const LV = { always: T('תמיד', 'Always'), ask: T('שאל אותי', 'Ask me'), never: T('אף פעם', 'Never') };
+        if (c.kind === 'connector') return (conns?.find((x) => x.key === c.key)?.name || c.key) + ': ' + (c.level === 'write' ? T('קריאה, כתיבה ומחיקה', 'Read, write and delete') + ' — ' + (c.ask === false ? T('אפשר תמיד', 'always allow') : T('לשאול לפני כתיבה ומחיקה', 'ask before writing')) : CL().find((x) => x[0] === c.level)[1]);
+        if (c.kind === 'devices') return T('שליטה במכשירים שלי: ', 'Control my devices: ') + LV[c.level];
+        if (c.kind === 'device') return T('המכשיר ', 'Device ') + ((S.devices || []).find((x) => x.id === c.id)?.name || c.id) + ': ' + LV[c.level];
+        if (c.kind === 'vault') return T('שימוש בכספת: ', 'Use the vault: ') + LV[c.level];
+        return T('הרשאות מנהל (sudo): ', 'Admin rights (sudo): ') + (c.value ? T('פעיל', 'on') : T('כבוי', 'off'));
+      };
+      const differs = (c) => c.kind === 'connector' ? (cp(c.key).level !== c.level || (c.level === 'write' && typeof c.ask === 'boolean' && cp(c.key).ask !== c.ask)) : c.kind === 'devices' ? d.p.devices !== c.level : c.kind === 'device' ? (d.dp[c.id] || d.p.devices) !== c.level : c.kind === 'vault' ? d.p.vault !== c.level : d.sudo !== c.value;
+      const applyChange = (c) => { if (c.kind === 'connector') d.c[c.key] = { level: c.level, ask: c.level === 'write' ? (typeof c.ask === 'boolean' ? c.ask : cp(c.key).ask) : true }; else if (c.kind === 'devices') d.p.devices = c.level; else if (c.kind === 'device') d.dp[c.id] = c.level; else if (c.kind === 'vault') d.p.vault = c.level; else d.sudo = c.value; };
+      const commit = async () => {
+        if (Array.isArray(bot.connectors) && conns) for (const c of conns) d.c[c.key] ||= cp(c.key); // legacy list → explicit per-connector levels
+        const p = { connPerms: d.c, connDefault: d.cd, devicePerms: d.dp, perms: d.p, pcSudo: d.sudo, rules: d.rules, allowTools: d.at, ...(Array.isArray(bot.connectors) && conns ? { connectors: null } : {}) };
+        try { Object.assign(bot, await patch('/bots/' + bot.id, p)); toast(T('נשמר', 'Saved')); } catch (e) { toast(e.message); return; }
+        draw();
+      };
+      async function doSave() {
+        if (d.rules.trim() && d.rules.trim() !== (bot.rules || '').trim()) {
+          bar.replaceChildren(h('span', { class: 'grow small' }, T('בודק אילו הגדרות הכללים משנים…', 'Checking which settings the rules change…')));
+          let plan = { changes: [], instructions: [] };
+          try { plan = await post('/bots/' + bot.id + '/rules-plan', { rules: d.rules }); } catch (e) { toast(e.message); }
+          const ch = (plan.changes || []).filter(differs);
+          if (ch.length) {
+            const go = await new Promise((res) => { const closeDlg = modal(h('div', { class: 'sheet', style: { width: 'min(480px,100%)' } }, h('div', { class: 'body' },
+              h('p', { style: { margin: '4px 0 10px', fontSize: '16px', fontWeight: 600 } }, T('הכללים שכתבת ישנו את ההגדרות האלה', 'Your rules will change these settings')),
+              h('ul', { class: 'askitems' }, ...ch.map((c) => h('li', { dir: 'auto' }, line(c)))),
+              plan.instructions?.length ? h('div', {}, h('div', { class: 'tiny', style: { margin: '10px 0 4px' } }, T('אין להם הגדרה מתאימה, ולכן יישארו כהנחיה לבוט בלבד:', 'No matching setting, so these stay as instructions to the bot only:')), h('ul', { class: 'askitems' }, ...plan.instructions.map((t) => h('li', { dir: 'auto' }, t)))) : null,
+              h('div', { class: 'tiny', style: { marginTop: '10px' } }, T('הטקסט של הכללים נשאר בשדה כמו שכתבת.', 'The rules text stays in the field as you wrote it.'))),
+              h('div', { class: 'foot' }, h('button', { class: 'btn', onclick: () => { res('back'); closeDlg(); } }, T('חזור', 'Back')), h('button', { class: 'btn', onclick: () => { res('keep'); closeDlg(); } }, T('שמור בלי לשנות הגדרות', 'Save without changing settings')), h('button', { class: 'btn primary', onclick: () => { res('apply'); closeDlg(); } }, T('עדכן ושמור', 'Update and save')))), { onclose: () => res('back') }); });
+            if (go === 'back') return paintBar();
+            if (go === 'apply') ch.forEach(applyChange);
+          }
+        }
+        await commit();
+      }
+      const rulesIn = h('textarea', { class: 'in', dir: 'auto', value: d.rules, placeholder: T('למשל: "לעולם אל תשלח מייל בלי לשאול אותי. אל תוציא כסף."', 'e.g. "Never send email without asking me."'), oninput: (e) => { d.rules = e.target.value; paintBar(); } });
       body.replaceChildren(
-        row('computer', T('שימוש במחשב שלו', 'Its own computer'), T('שולחן העבודה הפרטי של הבוט במחשב המשותף', "The bot's private desktop on the shared PC")),
-        row('shell', T('הרצת פקודות במחשב שלו', 'Run commands on its computer'), T('טרמינל (bash), קבצים, סקריפטים', 'Terminal (bash), files')),
-        h('div', { class: 'card' }, h('div', { class: 'row' }, h('div', { class: 'grow' }, h('b', {}, T('הרשאות מנהל במחשב שלו (sudo)', 'Admin rights on its computer (sudo)')), h('div', { class: 'tiny' }, T('מאפשר לבוט להתקין תוכנות מערכת. כבוי: הבוט מוגבל למשתמש שלו', 'Lets the bot install system software. Off: limited to its own user'))), sw(!!bot.pcSudo, (v) => save({ pcSudo: v })))),
-        row('connectorWrite', T('פעולות כתיבה בקונקטורים', 'Connector write actions'), T('שליחת מייל, מחיקה, יצירת אירוע וכד׳. קריאה תמיד מותרת', 'Send email, delete, create events… Reading is always allowed')),
-        row('vault', T('שימוש בכספת', 'Use the vault'), T('הקלדת שם משתמש וסיסמה שמורים לשדה בשולחן העבודה שלו. הבוט לא רואה את הסיסמה', 'Type a saved username/password into a field on its desktop. The bot never sees the password')),
-        row('devices', T('שליטה במכשירים שלי', 'Control my devices'), T('המחשבים והטלפונים שמריצים את האפליקציה. כל מכשיר מאשר בנפרד מתוכו', 'PCs and phones running the app. Each device also approves locally')),
-        row('hostShell', T('גישה לשרת הלינוקס (מתקדם)', 'Linux host shell (advanced)'), T('ברירת מחדל: אף פעם. הבוטים עובדים רק על המחשב המשותף', 'Default: never. Bots work only on the shared PC')),
-        bot.allowTools?.length ? h('div', { class: 'card' }, h('b', {}, T('פעולות שאושרו "תמיד"', 'Always-allowed actions')), h('div', { class: 'row wrap', style: { marginTop: '8px' } }, bot.allowTools.map((t) => h('span', { class: 'tag' }, t.split('__').slice(-2).join(' · ').replace(/_/g, ' '), h('button', { onclick: async () => { await save({ allowTools: bot.allowTools.filter((x) => x !== t) }); draw(); } }, '✕'))))) : null,
-        ...field(T('כללים בשפה חופשית (הבוט מחויב להם)', 'Rules in plain language'), inp('rules', true, T('למשל: "לעולם אל תשלח מייל בלי לשאול אותי. אל תוציא כסף."', 'e.g. "Never send email without asking me."'))),
-        ...field(T('קונקטורים מותרים', 'Allowed connectors'), h('input', { class: 'in', dir: 'ltr', value: (bot.connectors || []).join(', '), placeholder: T('ריק = כל הקונקטורים של Claude. או: Gmail, Google Drive', 'empty = all Claude connectors. Or: Gmail, Google Drive'), onchange: (e) => save({ connectors: e.target.value.trim() ? e.target.value.split(',').map((x) => x.trim()).filter(Boolean) : null }) }), T('הקונקטורים מגיעים מחשבון ה-Claude שלך (claude.ai → Settings → Connectors)', 'Connectors come from your Claude account')));
+        h('div', { class: 'card small muted' }, T('לבוט יש מחשב משלו, והוא תמיד רשאי להשתמש בו ולהריץ בו פקודות. הוא לא מריץ שום דבר על השרת.', 'The bot has its own computer and may always use it and run commands there. It never runs anything on the server.')),
+        h('div', { class: 'card' }, h('div', { class: 'row' }, h('div', { class: 'grow' }, h('b', {}, T('הרשאות מנהל במחשב שלו (sudo)', 'Admin rights on its computer (sudo)')), h('div', { class: 'tiny' }, T('מאפשר לבוט להתקין תוכנות מערכת. כבוי: הבוט מוגבל למשתמש שלו', 'Lets the bot install system software. Off: limited to its own user'))), sw(d.sudo, (v) => { d.sudo = v; paintBar(); }))),
+        connBox,
+        h('div', { class: 'card' }, h('div', { class: 'row wrap' }, h('div', { class: 'grow' }, h('b', {}, T('שימוש בכספת', 'Use the vault')), h('div', { class: 'tiny' }, T('הקלדת שם משתמש וסיסמה שמורים לשדה בשולחן העבודה שלו. הבוט לא רואה את הסיסמה', 'Type a saved username/password into a field on its desktop. The bot never sees the password'))), seg(levels(), d.p.vault, (v) => { d.p.vault = v; paintBar(); }))),
+        devBox, tagBox,
+        ...field(T('כללים בשפה חופשית (הבוט מחויב להם)', 'Rules in plain language'), rulesIn, T('אחרי שמירה יוצג אילו הגדרות בדף הזה הכללים משנים, לאישורך.', 'After saving you will see which settings on this page the rules change, for your approval.')),
+        bar);
+      drawConns(); drawDevs(); drawTags(); paintBar();
+      api('/connectors').then((r) => { conns = r.connectors || []; if (tab === 'perms') drawConns(); }).catch(() => { conns = []; drawConns(); });
     }
     else if (tab === 'auto') {
       const rs = S.routines.filter((r) => r.botId === bot.id);
@@ -249,6 +300,7 @@ export function settingsPage(arg) {
           row(T('ערכת נושא', 'Theme'), null, sel([['system', T('לפי המערכת', 'System')], ['dark', T('כהה', 'Dark')], ['light', T('בהיר', 'Light')]], pref('cbTheme', 'dark'), (v) => setPref('cbTheme', v))),
           row(T('הדגשה', 'Accent'), null, sel(ACC, pref('cbAccent', '#d97757'), (v) => setPref('cbAccent', v))),
           row(T('שפה', 'Language'), null, sel([['he', 'עברית'], ['en', 'English']], S.lang, (v) => { localStorage.cbLang = v; location.reload(); })),
+          row(T('תצוגת מפתח', 'Developer view'), T('מציג בצ׳אט את הפרטים הטכניים של כל פעולה: פקודות, קלט ופלט גולמי. כבוי: רק מה נעשה ומה התוצאה.', 'Shows the technical details of every action in chat: commands, raw input and output. Off: only what was done and the result.'), sw(!!S.settings.devView, (v) => saveS({ devView: v }))),
           row(T('בדיקת איות בזמן ההקלדה', 'Spell check while typing'), null, sw(pref('cbSpell', '1') === '1', (v) => setPref('cbSpell', v ? '1' : '0'))),
           row(T('שליחה עם Ctrl+Enter', 'Send with Ctrl+Enter'), T('יש ללחוץ על Ctrl+Enter כדי לשלוח את ההודעה. Enter מתחיל שורה חדשה.', 'Press Ctrl+Enter to send. Enter starts a new line.'), sw(pref('cbSendKey', 'enter') === 'ctrl', (v) => setPref('cbSendKey', v ? 'ctrl' : 'enter')))),
         ...group(T('מערכת', 'System'),
@@ -274,7 +326,7 @@ export function settingsPage(arg) {
       const rules = (key, title, sub) => { const list = S.settings[key] || []; return [h('div', { class: 'srow plain' }, h('div', { class: 'grow' }, h('div', {}, title), h('div', { class: 'tiny' }, sub)), h('button', { class: 'btn sm', onclick: async () => { const r = await promptDlg(T('כלל חדש (בשפה חופשית)', 'New rule (plain language)'), '', T('הוסף', 'Add')); if (r) { await saveS({ [key]: [...list, r] }); draw.permissions(); } } }, T('הוספת כלל', 'Add rule'))),
         ...list.map((r, i) => h('div', { class: 'sgroup' }, row(h('span', { dir: 'auto' }, r), null, ibtn('trash', T('מחק', 'Delete'), async () => { await saveS({ [key]: list.filter((_, j) => j !== i) }); draw.permissions(); }))))]; };
       content.replaceChildren(h('h2', {}, T('הרשאות', 'Permissions')),
-        h('div', { class: 'sgroup' }, row(T('אישורים', 'Approvals'), T('"לפי הגדרות הבוט": כל בוט פועל לפי ההרשאות שלו (תמיד / שאל אותי / אף פעם). "לשאול על כל פעולה": כל שימוש במחשב, בטרמינל או כתיבה בקונקטור מחכה לאישור שלך.', '"Per bot": each bot follows its own permission levels. "Ask for everything": every computer, terminal or connector-write action waits for your approval.'), sel([['auto', T('לפי הגדרות הבוט', 'Per bot settings')], ['strict', T('לשאול על כל פעולה', 'Ask for everything')]], S.settings.approvalMode || 'auto', (v) => saveS({ approvalMode: v })))),
+        h('div', { class: 'sgroup' }, row(T('אישורים', 'Approvals'), T('"לפי הגדרות הבוט": כל בוט פועל לפי ההרשאות שלו. "לשאול על כל פעולה": כל כתיבה בקונקטור, שימוש בכספת ושליטה במכשיר מחכים לאישור שלך, גם אם לבוט מוגדר "תמיד". לא חל על המחשב של הבוט עצמו.', '"Per bot": each bot follows its own permissions. "Ask for everything": every connector write, vault use and device control waits for your approval, even when the bot is set to "always". Does not apply to the bot\'s own computer.'), sel([['auto', T('לפי הגדרות הבוט', 'Per bot settings')], ['strict', T('לשאול על כל פעולה', 'Ask for everything')]], S.settings.approvalMode || 'auto', (v) => saveS({ approvalMode: v })))),
         ...rules('askRules', T('לשאול תמיד', 'Always ask'), T('לעצור ולשאול כשפעולה תואמת את הכללים האלה', 'Stop and ask when an action matches these rules')),
         ...rules('allowRules', T('לאפשר בלי לשאול', 'Allow without asking'), T('להמשיך אוטומטית כשפעולה תואמת את הכללים האלה', 'Continue automatically when an action matches these rules')),
         h('p', { class: 'tiny', style: { marginTop: '14px' } }, T('הכללים חלים על כל הבוטים. הרשאות לבוט בודד: הגדרות הבוט ← הרשאות.', 'Rules apply to all bots. Per-bot permissions: bot settings → Permissions.')));

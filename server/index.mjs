@@ -114,7 +114,7 @@ async function api(req, res, url) {
   if (p === '/connectors' && M === 'GET') return json(res, 200, { connectors: await agent.connectorStatus(url.searchParams.get('refresh') === '1') });
   if (p === '/settings' && M === 'PATCH') {
     const b = await readJson(req);
-    for (const k of ['autoModels', 'localModels', 'language', 'userName', 'voiceLang', 'voiceRate', 'voiceName', 'mainBotId', 'groups', 'timezone', 'approvalMode', 'askRules', 'allowRules']) if (k in b) state.settings[k] = b[k];
+    for (const k of ['autoModels', 'localModels', 'language', 'userName', 'voiceLang', 'voiceRate', 'voiceName', 'mainBotId', 'groups', 'timezone', 'approvalMode', 'askRules', 'allowRules', 'devView']) if (k in b) state.settings[k] = b[k];
     save(); emit('settings');
     return json(res, 200, state.settings);
   }
@@ -151,10 +151,28 @@ async function api(req, res, url) {
     if (!sub && M === 'PATCH') {
       const b = await readJson(req);
       for (const k of ['name', 'title', 'description', 'instructions', 'interests', 'tasks', 'emoji', 'shape', 'color', 'modelMode', 'model', 'effortMode', 'effort', 'proactive', 'connectors', 'rules', 'hidden', 'allowTools', 'learning', 'pcSudo', 'pinned', 'group']) if (k in b) bot[k] = b[k];
-      if (b.perms) bot.perms = { ...bot.perms, ...b.perms };
+      const LV = ['always', 'ask', 'never'];
+      if (b.perms) for (const k of ['devices', 'vault']) if (LV.includes(b.perms[k])) bot.perms[k] = b.perms[k];
+      if (b.connPerms && typeof b.connPerms === 'object') { bot.connPerms = {}; for (const [k, v] of Object.entries(b.connPerms)) if (/^[\w-]{1,80}$/.test(k) && v && ['none', 'read', 'write'].includes(v.level)) bot.connPerms[k] = { level: v.level, ask: v.ask !== false }; }
+      if (b.connDefault && ['none', 'read', 'write'].includes(b.connDefault.level)) bot.connDefault = { level: b.connDefault.level, ask: b.connDefault.ask !== false };
+      if (b.devicePerms && typeof b.devicePerms === 'object') { bot.devicePerms = {}; for (const [k, v] of Object.entries(b.devicePerms)) if (state.devices[k] && LV.includes(v)) bot.devicePerms[k] = v; }
       if ('unread' in b) bot.unread = Math.max(0, Number(b.unread) || 0);
       save(); emit('bots');
       return json(res, 200, publicBot(bot));
+    }
+    if (sub === 'rules-plan' && M === 'POST') { // which permission settings do the free-text rules imply? (the user confirms before anything changes)
+      const b = await readJson(req); const rules = String(b.rules || '').slice(0, 4000);
+      const conns = (await agent.connectorStatus()).map((c) => ({ key: c.key, name: c.name }));
+      const devs = devices.listDevices().map((d) => ({ id: d.id, name: d.name, platform: d.platform }));
+      if (!rules.trim()) return json(res, 200, { changes: [], instructions: [] });
+      const out = await agent.oneShot(`The user wrote rules in plain language for one of their AI bots. Decide which of the bot's permission SETTINGS these rules clearly imply. Only map a rule when it clearly and fully corresponds to a setting; everything else stays a plain instruction.\n<rules>\n${rules}\n</rules>\nSettings that exist:\n- connector access, per connector: level "none" (no access) | "read" (read only) | "write" (read, write and delete); with "write" also ask: true (ask before writing/deleting) | false (always allowed). Connectors: ${JSON.stringify(conns)}\n- control of the user's devices: general level "always" | "ask" | "never", and per device the same levels. Devices: ${JSON.stringify(devs)}\n- vault (typing saved logins): "always" | "ask" | "never"\n- sudo (admin rights on the bot's own computer): true | false\nReturn ONLY JSON: {"changes":[{"kind":"connector","key":"<connector key>","level":"none|read|write","ask":true|false} | {"kind":"devices","level":"..."} | {"kind":"device","id":"<device id>","level":"..."} | {"kind":"vault","level":"..."} | {"kind":"sudo","value":true|false}],"instructions":["<each rule or part of a rule that has no matching setting, quoted briefly in its original language>"]}`);
+      let j = {}; try { j = JSON.parse((out.match(/\{[\s\S]*\}/) || ['{}'])[0]); } catch {}
+      const LV = ['always', 'ask', 'never'];
+      const changes = (Array.isArray(j.changes) ? j.changes : []).filter((c) => c && (
+        (c.kind === 'connector' && conns.some((x) => x.key === c.key) && ['none', 'read', 'write'].includes(c.level)) ||
+        (c.kind === 'devices' && LV.includes(c.level)) || (c.kind === 'device' && devs.some((x) => x.id === c.id) && LV.includes(c.level)) ||
+        (c.kind === 'vault' && LV.includes(c.level)) || (c.kind === 'sudo' && typeof c.value === 'boolean'))).slice(0, 40);
+      return json(res, 200, { changes, instructions: (Array.isArray(j.instructions) ? j.instructions : []).filter((x) => typeof x === 'string').slice(0, 30) });
     }
     if (!sub && M === 'DELETE') {
       agent.stopBot(bot.id); vm.stopDesktop(bot.id);

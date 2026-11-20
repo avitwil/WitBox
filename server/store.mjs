@@ -66,6 +66,13 @@ if (fs.existsSync(STATE_FILE)) {
     state = { ...defaults(), ...s, settings: { ...defaults().settings, ...(s.settings || {}) } };
   } catch (e) { console.error('state load failed', e); }
 }
+// 1.3: bots work only on their own computer (no host shell), connector access is per connector.
+for (const b of state.bots) {
+  const p = (b.perms ||= {});
+  if (!b.connDefault) b.connDefault = { level: p.connectorWrite === 'never' ? 'read' : 'write', ask: p.connectorWrite !== 'always' };
+  b.connPerms ||= {}; b.devicePerms ||= {};
+  b.perms = { devices: p.devices || 'ask', vault: p.vault || 'ask' };
+}
 let saveTimer = null;
 export function save() {
   if (saveTimer) return;
@@ -100,8 +107,10 @@ export function createBot(input = {}) {
     effortMode: input.effortMode || 'auto',   // auto | manual
     effort: input.effort || 'medium',
     proactive: !!input.proactive,
-    connectors: input.connectors ?? null,     // null = all, or [server names]
-    perms: { computer: 'always', shell: 'always', connectorWrite: 'ask', hostShell: 'never', devices: 'ask', ...(input.perms || {}) },
+    connPerms: input.connPerms || {},         // connector key -> { level: none|read|write, ask: bool }
+    connDefault: { level: 'write', ask: true }, // connectors without their own entry
+    devicePerms: {},                          // device id -> always|ask|never (falls back to perms.devices)
+    perms: { devices: ['always', 'ask', 'never'].includes(input.perms?.devices) ? input.perms.devices : 'ask', vault: ['always', 'ask', 'never'].includes(input.perms?.vault) ? input.perms.vault : 'ask' },
     rules: input.rules || '',
     allowTools: [],
     pcUser: null, pcPass: null, pcSudo: false, display: null,

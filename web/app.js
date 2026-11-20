@@ -258,7 +258,7 @@ function upsertMsg(m, isNew) {
 const toolLabel = (b) => {
   const n = b.name, i = b.input || {};
   if (n === 'mcp__bot__computer') return ['monitor', ({ screenshot: T('מצלם מסך', 'Screenshot'), click: T('לוחץ', 'Click'), double_click: T('לחיצה כפולה', 'Double click'), right_click: T('קליק ימני', 'Right click'), type: T('מקליד', 'Type') + (i.text ? `: ${String(i.text).slice(0, 40)}` : ''), key: T('מקש', 'Key') + ` ${i.keys || ''}`, scroll: T('גולל', 'Scroll'), move: T('מזיז עכבר', 'Move'), drag: T('גורר', 'Drag'), wait: T('ממתין', 'Wait') })[i.action] || i.action];
-  if (n === 'mcp__bot__pc_shell' || n === 'mcp__bot__windows_shell') return ['kbd', T('טרמינל: ', 'Terminal: ') + String(i.script || '').split('\n')[0].slice(0, 60)];
+  if (n === 'mcp__bot__pc_shell' || n === 'mcp__bot__windows_shell') return ['kbd', S.settings.devView ? T('טרמינל: ', 'Terminal: ') + String(i.script || '').split('\n')[0].slice(0, 60) : T('מריץ פקודה במחשב שלו', 'Running a command on its computer')];
   if (n === 'mcp__bot__pc_copy' || n === 'mcp__bot__windows_copy') return ['file', T('מעתיק קובץ', 'Copy file')];
   if (n === 'mcp__bot__remember') return ['brain', T('זוכר', 'Remember') + ': ' + String(i.text || '').slice(0, 50)];
   if (n === 'mcp__bot__save_skill') return ['spark', T('שומר סקיל', 'Save skill') + ': ' + (i.name || '')];
@@ -269,6 +269,7 @@ const toolLabel = (b) => {
   if (n === 'mcp__bot__dashboard_suggest') return ['grid', T('המלצה בדשבורד', 'Dashboard suggestion') + ': ' + (i.title || '')];
   if (n === 'mcp__bot__dashboard') return ['grid', T('דשבורד', 'Dashboard') + ' ' + (i.op || '').replace(/_/g, ' ')];
   if (n.startsWith('mcp__bot__')) return ['spark', n.slice(10).replace(/_/g, ' ')];
+  if (b.label) return ['cloud', b.label + (b.item ? ': ' + b.item : '')];
   if (n.startsWith('mcp__')) { const p = n.split('__'); return ['cloud', p[1].replace(/^claude_ai_/, '').replace(/_/g, ' ') + ' · ' + p.slice(2).join(' ').replace(/_/g, ' ')]; }
   if (n === 'WebSearch') return ['search', T('מחפש', 'Search') + ': ' + (i.query || '')];
   if (n === 'WebFetch') return ['cloud', T('קורא', 'Reading') + ' ' + String(i.url || '').replace(/^https?:\/\//, '').slice(0, 50)];
@@ -291,10 +292,22 @@ function msgEl(m, openKeys = []) {
     else if (b.type === 'tool') {
       if (['mcp__bot__show_artifact', 'mcp__bot__send_file', 'mcp__bot__notify', 'mcp__bot__request_takeover', 'mcp__bot__secure_input', 'TodoWrite', 'ToolSearch'].includes(b.name) && b.status !== 'error') return;
       if (!group) { group = h('div', { class: 'toolgroup' }); el.append(group); }
-      const [ic, lbl] = toolLabel(b); const k = b.id;
-      const row = h('button', { class: 'tool ' + (b.status === 'running' ? 'run' : b.status === 'error' ? 'err' : ''), onclick: () => { const d = row.nextSibling; if (d?.classList?.contains('tooldetail')) d.remove(); else row.after(detail()); } }, h('span', { class: 'ic' }, b.status === 'running' ? icon('refresh', 14) : icon(ic, 15)), h('span', { class: 'lbl', dir: 'auto' }, lbl));
-      const detail = () => h('div', { class: 'tooldetail', 'data-k': k }, JSON.stringify(b.input, null, 1) + (b.result ? '\n→ ' + b.result : ''));
-      group.append(row); if (openKeys.includes(k)) group.append(detail());
+      const dev = !!S.settings.devView, k = b.id;
+      // identical connector actions in a row ("move to trash" ×12) collapse into one line that opens to the list
+      if (b.label && !dev && group._run?.label === b.label) { group._run.add(b); return; }
+      group._run = null;
+      const [ic, lbl] = toolLabel(b);
+      const items = [b];
+      const state = () => (items.some((x) => x.status === 'running') ? 'run' : items.some((x) => x.status === 'error') ? 'err' : '');
+      const icEl = h('span', { class: 'ic' }), lblEl = h('span', { class: 'lbl', dir: b.label ? (S.lang === 'he' ? 'rtl' : 'ltr') : 'auto' });
+      const canOpen = () => dev || items.length > 1 || b.status === 'error';
+      const detail = () => dev ? h('div', { class: 'tooldetail', 'data-k': k }, JSON.stringify(b.input, null, 1) + (b.result ? '\n→ ' + b.result : ''))
+        : items.length > 1 ? h('div', { class: 'tooldetail plain', 'data-k': k, dir: 'auto' }, ...items.map((x) => h('div', { class: x.status === 'error' ? 'bad' : '', dir: 'auto' }, (x.status === 'error' ? '✕ ' : x.status === 'running' ? '… ' : '✓ ') + (x.item || T('פריט ללא פרטים', 'item without details')))))
+        : h('div', { class: 'tooldetail plain', 'data-k': k, dir: 'auto' }, T('הפעולה נכשלה', 'The action failed') + (b.result && !/^\s*[[{]/.test(b.result) ? ': ' + b.result.slice(0, 300) : ''));
+      const row = h('button', { class: 'tool', onclick: () => { const d = row.nextSibling; if (d?.classList?.contains('tooldetail')) d.remove(); else if (canOpen()) row.after(detail()); } }, icEl, lblEl);
+      const paint = () => { const st = state(); row.className = 'tool ' + st + (canOpen() ? '' : ' flat'); icEl.replaceChildren(st === 'run' ? icon('refresh', 14) : icon(ic, 15)); lblEl.textContent = items.length > 1 ? `${b.label} ×${items.length}` : lbl; const d = row.nextSibling; if (d?.classList?.contains('tooldetail')) d.replaceWith(detail()); };
+      if (b.label && !dev) group._run = { label: b.label, add: (x) => { items.push(x); paint(); } };
+      group.append(row); paint(); if (openKeys.includes(k) && canOpen()) row.after(detail());
     }
     else if (b.type === 'artifact') el.append(h('button', { class: 'artcard', onclick: () => openArtifact(route.id, b.id) }, h('span', { class: 'fi' }, icon(b.kind === 'sheet' ? 'kbd' : 'spark')), h('span', {}, h('b', { dir: 'auto' }, b.title), h('small', {}, ({ html: T('אפליקציה / לוח', 'App / board'), sheet: T('גיליון', 'Sheet'), markdown: T('מסמך', 'Document'), svg: T('תרשים', 'Diagram'), mermaid: T('תרשים', 'Diagram') })[b.kind] + ' · ' + T('לחץ לפתיחה', 'tap to open')))));
     else if (b.type === 'dash') el.append(h('button', { class: 'artcard', onclick: () => go('#/dashboard') }, h('span', { class: 'fi' }, icon('grid')), h('span', {}, h('b', { dir: 'auto' }, b.title), h('small', {}, T('נוסף לדשבורד · לחץ לפתיחה', 'On the dashboard · tap to open')))));
@@ -307,9 +320,16 @@ function msgEl(m, openKeys = []) {
     else if (b.type === 'approval') {
       const pend = b.status === 'pending';
       const act = (d) => post('/approvals/' + b.id, { decision: d }).catch((e) => toast(e.message));
-      el.append(h('div', { class: 'ask ' + (pend ? 'pending' : '') }, h('b', { dir: 'auto' }, '🛡 ' + b.title), b.detail ? h('pre', {}, b.detail) : null,
-        pend ? h('div', { class: 'btns' }, h('button', { class: 'btn primary sm', onclick: () => act('allow') }, T('אשר', 'Allow')), b.toolKey ? h('button', { class: 'btn sm', onclick: () => act('always') }, T('אשר תמיד', 'Always allow')) : null, h('button', { class: 'btn sm danger', onclick: () => act('deny') }, T('דחה', 'Deny')))
-          : h('span', { class: 'pill ' + (b.status === 'allowed' || b.status === 'always' ? 'ok' : 'bad') }, ({ allowed: T('אושר', 'Allowed'), always: T('אושר תמיד', 'Always allowed'), denied: T('נדחה', 'Denied'), timeout: T('פג תוקף', 'Timed out'), cancelled: T('בוטל', 'Cancelled') })[b.status] || b.status)));
+      const task = b.mode === 'task';
+      el.append(h('div', { class: 'ask ' + (pend ? 'pending' : '') }, h('b', { dir: task ? (S.lang === 'he' ? 'rtl' : 'ltr') : 'auto' }, '🛡 ' + (task ? T('נדרש אישור: ', 'Approval needed: ') + b.title : b.title)),
+        b.items?.length ? h('ul', { class: 'askitems' }, ...b.items.map((t) => h('li', { dir: 'auto' }, t))) : null,
+        b.detail ? h('div', { class: 'askdetail', dir: 'auto' }, b.detail) : null,
+        task && pend ? h('div', { class: 'tiny', style: { margin: '0 0 10px' } }, T(`"אפשר תמיד" מבטל את השאלה לכל פעולות הכתיבה ב-${b.connector} של הבוט הזה. אפשר לשנות בהגדרות הבוט ← הרשאות.`, `"Always allow" stops asking for every write to ${b.connector} by this bot. Change it in bot settings → Permissions.`)) : null,
+        pend ? h('div', { class: 'btns' },
+            h('button', { class: 'btn primary sm', onclick: () => act(task ? 'task' : 'allow') }, task ? T('אפשר הכול לפעולה הזו', 'Allow all for this action') : T('אשר', 'Allow')),
+            task || b.toolKey ? h('button', { class: 'btn sm', onclick: () => act('always') }, T('אפשר תמיד', 'Always allow')) : null,
+            h('button', { class: 'btn sm danger', onclick: () => act('deny') }, T('דחה', 'Deny')))
+          : h('span', { class: 'pill ' + (['allowed', 'always', 'task'].includes(b.status) ? 'ok' : 'bad') }, ({ allowed: T('אושר', 'Allowed'), task: T('אושר לכל הפעולה', 'Allowed for this action'), always: T('אושר תמיד', 'Always allowed'), denied: T('נדחה', 'Denied'), timeout: T('פג תוקף', 'Timed out'), cancelled: T('בוטל', 'Cancelled') })[b.status] || b.status)));
     }
     else if (b.type === 'takeover') el.append(h('div', { class: 'ask ' + (b.status === 'pending' ? 'pending' : '') }, h('b', {}, '🖐 ' + T('הבוט צריך אותך במחשב', 'The bot needs you at the computer')), h('div', { class: 'small muted', dir: 'auto', style: { marginBottom: '8px' } }, b.reason), b.status === 'pending' ? h('button', { class: 'btn primary sm', onclick: () => openComputer(route.id, { takeover: true }) }, T('השתלט על המחשב', 'Take over')) : h('span', { class: 'pill ok' }, T('הוחזר לבוט', 'Handed back'))));
     else if (b.type === 'secret') {
