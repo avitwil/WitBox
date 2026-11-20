@@ -16,7 +16,7 @@ IC = {
  'grid': '<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/>', 'spark': '<path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/>',
  'phone': '<path d="M7 3h10v18H7zM11 18h2"/>', 'shield': '<path d="M12 3l8 3v6c0 5-3.500 8-8 9-4.500-1-8-4-8-9V6z"/>', 'wave': '<path d="M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4"/>',
  'cloud': '<path d="M7 18a4 4 0 0 1-.500-8 6 6 0 0 1 11.500 1.500A3.500 3.500 0 0 1 17.500 18z"/>', 'clock': '<path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2"/>',
- 'lock': '<path d="M6 11h12v9H6zM9 11V8a3 3 0 0 1 6 0v3"/>', 'hand': '<path d="M8 12V5a1.500 1.500 0 0 1 3 0v6V4a1.500 1.500 0 0 1 3 0v7V6a1.500 1.500 0 0 1 3 0v8c0 4-2 7-6 7s-5-2-7-6l-1-2a1.500 1.500 0 0 1 2.600-1.500z"/>',
+ 'lock': '<path d="M6 11h12v9H6zM9 11V8a3 3 0 0 1 6 0v3"/>', 'folder': '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>', 'hand': '<path d="M8 12V5a1.500 1.500 0 0 1 3 0v6V4a1.500 1.500 0 0 1 3 0v7V6a1.500 1.500 0 0 1 3 0v8c0 4-2 7-6 7s-5-2-7-6l-1-2a1.500 1.500 0 0 1 2.600-1.500z"/>',
  'dl': '<path d="M12 4v11M7 11l5 5 5-5M5 20h14"/>', 'gh': '<path d="M9 19c-4 1.500-4-2-6-2m12 5v-3.500c0-1 .100-1.400-.500-2 2.800-.300 5.500-1.400 5.500-6a4.600 4.600 0 0 0-1.300-3.200 4.200 4.200 0 0 0-.100-3.200s-1.100-.300-3.500 1.300a12 12 0 0 0-6.200 0C6.500 2.800 5.400 3.100 5.400 3.100a4.200 4.200 0 0 0-.100 3.200A4.600 4.600 0 0 0 4 9.500c0 4.600 2.700 5.700 5.500 6-.600.600-.600 1.200-.500 2V21"/>',
  'server': '<path d="M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01"/>', 'win': '<path d="M3 5l8-1v7.500H3zM13 3.700L21 3v8.500h-8zM3 12.500h8V20l-8-1zM13 12.500h8V21l-8-1.200z"/>',
  'android': '<path d="M6 10h12v7a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2zM8 10a4 4 0 0 1 8 0M8 5L6.500 3M16 5l1.500-2M3 11v5M21 11v5"/>', 'linux': '<path d="M3 5h18v14H3zM7 10l3 2-3 2M12 15h5"/>',
@@ -165,6 +165,7 @@ home = f'''
     {card('wave', 'שיחת קול', 'Voice chat', 'מדברים עם הבוט כמו בטלפון. קול עברי טבעי שרץ מקומית, כאפשרות.', 'Talk to a bot like on a phone call. A natural local Hebrew voice is optional.')}
     {card('cloud', 'קונקטורים', 'Connectors', 'Gmail, יומן, Drive וכל מה שמחובר לחשבון ה-Claude שלכם זמין לבוטים.', 'Gmail, Calendar, Drive and everything connected to your Claude account.')}
     {card('shield', 'הרשאות בשליטתכם', 'Permissions you control', 'לכל קונקטור: ללא גישה, קריאה בלבד או קריאה וכתיבה. כרטיס אישור אחד למשימה, בשפה רגילה: ממי המייל ומה הנושא, בלי מידע טכני.', 'Per connector: no access, read only, or read and write. One approval card per task, in plain words: who sent the email and its subject, no technical data.')}
+    {card('folder', 'תיקייה משותפת לכל בוט', 'A shared folder per bot', 'הקבצים שהעליתם, הפרויקטים שהבוט בונה והסשנים שלו מופיעים על שולחן העבודה שלו. קוד נכתב שם ורץ רק במחשב של הבוט.', 'Your uploads, the projects the bot builds and its sessions appear on its desktop. Code is written there and runs only on the bot\'s computer.')}
     {card('lock', 'כספת מוצפנת', 'Encrypted vault', 'פרטי התחברות נשמרים מוצפנים על השרת שלכם ומוקלדים עבור הבוט.', 'Logins are stored encrypted on your server and typed for the bot.')}
     {card('hand', 'שליטה במכשיר', 'Device control', 'אפשר לתת לבוט להפעיל את הטלפון או המחשב שבידכם, באישור מהמכשיר עצמו.', 'Let a bot operate the phone or PC in your hands, approved on that device.')}
   </div>
