@@ -95,7 +95,8 @@ final class DeviceLink implements ReconnectingSocket.Listener {
             respondError(rid, "denied");
             return;
         }
-        if (ControlService.get() == null) {
+        // Direct tools (SMS, calls, notifications…) do not need the accessibility service.
+        if (!DeviceTools.handles(action.optString("type", "")) && ControlService.get() == null) {
             respondError(rid, "not_enabled");
             return;
         }
@@ -111,8 +112,9 @@ final class DeviceLink implements ReconnectingSocket.Listener {
 
     /** Worker thread. */
     private void execute(Object rid, String botId, JSONObject action) {
+        final boolean direct = DeviceTools.handles(action.optString("type", ""));
         ControlService svc = ControlService.get();
-        if (svc == null) {
+        if (svc == null && !direct) {
             respondError(rid, "not_enabled");
             return;
         }
@@ -122,7 +124,7 @@ final class DeviceLink implements ReconnectingSocket.Listener {
             return;
         }
         try {
-            JSONObject result = svc.perform(action);
+            JSONObject result = direct ? DeviceTools.perform(ctx, action) : svc.perform(action);
             JSONObject resp = new JSONObject();
             resp.put("type", "response");
             resp.put("id", rid == null ? JSONObject.NULL : rid);

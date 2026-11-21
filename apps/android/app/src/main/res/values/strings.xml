@@ -34,7 +34,7 @@
     <string name="status_text">Listening for bot notifications</string>
 
     <string name="ask_title">%1$s wants to control this device</string>
-    <string name="ask_body">The bot will be able to see the screen, tap, swipe and type on this device.</string>
+    <string name="ask_body">The bot will be able to see and operate the screen, and use the device tools you switched on (such as messages and calls).</string>
     <string name="allow_once">Allow once (5 min)</string>
     <string name="allow_always">Always allow</string>
     <string name="deny">Deny</string>
@@ -48,11 +48,30 @@
     <string name="download_failed">Download failed</string>
     <string name="download_unsupported">This type of download is not supported</string>
     <string name="no_app_for_link">No app can open this link</string>
-    <string name="a11y_hint">Turn on “WitBox device control” under Installed apps. If it is greyed out: Settings → Apps → WitBox → ⋮ → Allow restricted settings.</string>
+    <string name="a11y_hint">Switch on “WitBox device control” under Installed apps. If it is blocked (“restricted setting”), the app was installed from a file: reinstall it with adb.</string>
     <string name="file_chooser_title">Choose file</string>
     <string name="confirm_raise_title">Device control permission</string>
     <string name="confirm_raise_msg">Allow %1$s to control this device: %2$s?</string>
     <string name="level_always">Always</string>
     <string name="level_ask">Ask each time</string>
     <string name="allow">Allow</string>
+
+    <string name="listener_label">Notification reading – WitBox</string>
+    <string name="tool_confirm_title">Device tools</string>
+    <string name="tool_confirm_msg">Allow the bots you permitted on this device to %1$s?</string>
+    <string name="tool_sms">read SMS messages</string>
+    <string name="tool_sms_send">send SMS messages</string>
+    <string name="tool_calls">see the call log</string>
+    <string name="tool_dial">dial phone numbers</string>
+    <string name="tool_contacts">see your contacts</string>
+    <string name="tool_notifications">read notifications of other apps</string>
+    <string name="tool_notif_reply">answer messages through their notifications</string>
+    <string name="tool_calendar">see your calendar</string>
+    <string name="tool_location">know where this device is</string>
+    <string name="codes_confirm_title">Verification codes</string>
+    <string name="codes_confirm_msg">Stop hiding messages with verification codes (for example from your bank) from bots? A permitted bot will be able to read them.</string>
+    <string name="code_hidden">[hidden: message with a verification code]</string>
+    <string name="listener_hint">Switch on “Notification reading – WitBox” in the list.</string>
+    <string name="perm_hint">The permission was not granted. You can grant it here: Permissions → pick the permission → Allow.</string>
+    <string name="location_hint">For a bot to get the location while the app is in the background, choose “Allow all the time”.</string>
 </resources>

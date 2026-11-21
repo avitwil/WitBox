@@ -32,7 +32,7 @@
     <string name="status_text">ממתין להתראות מהבוטים</string>
 
     <string name="ask_title">%1$s מבקש לשלוט במכשיר הזה</string>
-    <string name="ask_body">הבוט יוכל לראות את המסך, להקיש, להחליק ולהקליד במכשיר הזה.</string>
+    <string name="ask_body">הבוט יוכל לראות את המסך ולהפעיל את המכשיר, ולהשתמש בכלי המכשיר שהפעלת (כמו הודעות ושיחות).</string>
     <string name="allow_once">אפשר פעם אחת (5 דק׳)</string>
     <string name="allow_always">אפשר תמיד</string>
     <string name="deny">דחה</string>
@@ -46,11 +46,30 @@
     <string name="download_failed">ההורדה נכשלה</string>
     <string name="download_unsupported">סוג ההורדה הזה אינו נתמך</string>
     <string name="no_app_for_link">אין אפליקציה שיכולה לפתוח את הקישור</string>
-    <string name="a11y_hint">הפעל את ”שליטה במכשיר – WitBox“ תחת אפליקציות מותקנות. אם האפשרות אפורה: הגדרות ← אפליקציות ← WitBox ← ⋮ ← אפשר הגדרות מוגבלות.</string>
+    <string name="a11y_hint">הפעל את ”שליטה במכשיר – WitBox“ תחת אפליקציות מותקנות. אם האפשרות חסומה (”הגדרה מוגבלת“): האפליקציה הותקנה מקובץ. התקן אותה מחדש דרך adb.</string>
     <string name="file_chooser_title">בחירת קובץ</string>
     <string name="confirm_raise_title">הרשאת שליטה במכשיר</string>
     <string name="confirm_raise_msg">לאפשר ל-%1$s לשלוט במכשיר הזה: %2$s?</string>
     <string name="level_always">תמיד</string>
     <string name="level_ask">שאל בכל פעם</string>
     <string name="allow">אפשר</string>
+
+    <string name="listener_label">קריאת התראות – WitBox</string>
+    <string name="tool_confirm_title">כלי המכשיר</string>
+    <string name="tool_confirm_msg">לאפשר לבוטים שהרשית במכשיר הזה: %1$s?</string>
+    <string name="tool_sms">לקרוא הודעות SMS</string>
+    <string name="tool_sms_send">לשלוח הודעות SMS</string>
+    <string name="tool_calls">לראות את יומן השיחות</string>
+    <string name="tool_dial">לחייג למספרי טלפון</string>
+    <string name="tool_contacts">לראות את אנשי הקשר</string>
+    <string name="tool_notifications">לקרוא התראות של אפליקציות אחרות</string>
+    <string name="tool_notif_reply">לענות להודעות דרך ההתראות</string>
+    <string name="tool_calendar">לראות את היומן</string>
+    <string name="tool_location">לדעת את מיקום המכשיר</string>
+    <string name="codes_confirm_title">קודי אימות</string>
+    <string name="codes_confirm_msg">להפסיק להסתיר מהבוטים הודעות עם קודי אימות (למשל מהבנק)? בוט מורשה יוכל לקרוא אותם.</string>
+    <string name="code_hidden">[הוסתר: הודעה עם קוד אימות]</string>
+    <string name="listener_hint">הפעל את ”קריאת התראות – WitBox“ ברשימה.</string>
+    <string name="perm_hint">ההרשאה לא ניתנה. אפשר לתת אותה כאן: הרשאות ← לבחור את ההרשאה ← אפשר.</string>
+    <string name="location_hint">כדי שבוט יקבל מיקום כשהאפליקציה ברקע, בחר ”כל הזמן“.</string>
 </resources>

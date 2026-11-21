@@ -153,6 +153,32 @@ final class Prefs {
         e.commit();
     }
 
+    // ---- device tools (full edition): one switch per tool, all off by default ---------------
+
+    private static final String FILE_TOOLS = "device_tools";
+    private static final String KEY_HIDE_CODES = "hide_codes";
+
+    private static SharedPreferences tools(Context c) {
+        return c.getApplicationContext().getSharedPreferences(FILE_TOOLS, Context.MODE_PRIVATE);
+    }
+
+    static boolean toolOn(Context c, String tool) {
+        return tools(c).getBoolean("on_" + tool, false);
+    }
+
+    static void setTool(Context c, String tool, boolean on) {
+        tools(c).edit().putBoolean("on_" + tool, on).commit();
+    }
+
+    /** Verification codes in SMS / notifications are withheld from bots unless switched off. */
+    static boolean hideCodes(Context c) {
+        return tools(c).getBoolean(KEY_HIDE_CODES, true);
+    }
+
+    static void setHideCodes(Context c, boolean hide) {
+        tools(c).edit().putBoolean(KEY_HIDE_CODES, hide).commit();
+    }
+
     static JSONObject allLevels(Context c) {
         JSONObject o = new JSONObject();
         for (Map.Entry<String, ?> e : perms(c).getAll().entrySet()) {

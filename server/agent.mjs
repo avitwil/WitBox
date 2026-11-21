@@ -109,6 +109,7 @@ ${(s.askRules || []).length || (s.allowRules || []).length ? `\n# The user's app
 The user keeps logins and contact details in a vault. mcp__bot__vault_list shows what exists (never passwords). To sign in on your desktop: click the field, then mcp__bot__vault_fill types the username or the password straight into it — you never see the password. Never ask the user to paste a password in chat.
 ${team}# Local devices
 The user may let you control the device they are currently using (Windows/Linux PC or Android) through the WitBox app: mcp__bot__list_devices then mcp__bot__device_control. Each device decides locally (always / ask / never) whether you are allowed. Only use it when the user asks for something on that device.
+On Android prefer the direct tools over the screen: to read SMS use action sms_list, for calls call_log, for incoming messages of other apps (WhatsApp, Telegram…) notifications, and so on; they return text and are far faster than screenshots. To see or operate an app use read_screen (text with tap coordinates) and click_text first, and take a screenshot only when the text is not enough (images, maps, games). If you are not sure what is switched on, call action capabilities. A tool that is off must be switched on by the user on the device itself; say so plainly instead of trying another route. Messages that contain verification codes are hidden by the device; never try to get around that. When you show messages or calls to the user, show who, when and what — no ids or keys.
 
 # What the Brain knows about the user
 ## User/Profile.md
@@ -461,23 +462,57 @@ function botTools(turn) {
     tool('list_devices', 'List the user\'s devices that run the WitBox app (id, name, platform, online).', {},
       safe(async () => txt(JSON.stringify(listDevices().map((d) => ({ id: d.id, name: d.name, platform: d.platform, online: d.online })), null, 1)))),
 
-    tool('device_control', 'Control one of the user\'s own devices through the WitBox app (the device itself approves or denies). action.type: screenshot | click {x,y,button,double} | move | drag {x1,y1,x2,y2} | scroll {x,y,dx,dy} | type {text} | key {keys}; Android also: tap, swipe {x1,y1,x2,y2,ms}, global {name: back|home|recents|notifications}, open_app {package}. Coordinates are pixels of the last screenshot.',
+    tool('device_control', 'Use one of the user\'s own devices through the WitBox app (the device itself approves or denies). Screen control, action.type: screenshot | click {x,y,button,double} | move | drag {x1,y1,x2,y2} | scroll {x,y,dx,dy} | type {text} | key {keys}; Android also: read_screen (what is on screen as text with tap coordinates — prefer it over screenshot), click_text {text,index}, tap, swipe {x1,y1,x2,y2,ms}, global {name: back|home|recents|notifications}, open_app {package}. Coordinates are pixels of the last screenshot / read_screen. Android direct tools (no screen needed, each one must be switched on by the user on the device): capabilities (which tools are on) | sms_list {limit,box: inbox|sent|all,from,query,since_hours,unread} | sms_send {to,text} | call_log {limit,kind: all|missed|incoming|outgoing,since_hours} | call {number} | contacts {query,limit} | notifications {limit,app,query,since_hours} (incoming messages of any app, e.g. WhatsApp) | notification_reply {key,text} (key = reply_key from notifications) | calendar {days,back_days,limit} | location.',
       { device: z.string().describe('device id or name'), action: z.object({ type: z.string() }).passthrough() },
       safe(async ({ device, action }) => {
         const d = listDevices().find((x) => x.id === device) || listDevices().find((x) => (x.name || '').toLowerCase().includes(device.toLowerCase()));
         if (!d) return errOut('device not found');
         const level = bot.devicePerms?.[d.id] || bot.perms.devices || 'ask';
         if (level === 'never') return errOut('This bot is not allowed to control this device (bot settings → Permissions).');
-        if ((level === 'ask' || strictMode()) && !turn.devicesOk?.has(d.id)) {
-          if ((await askUser(turn, { title: (state.settings.language === 'en' ? 'Control the device: ' : 'שליטה במכשיר: ') + (d.name || d.id) })) === 'deny') return errOut('The user did not allow controlling this device.');
+        const isSend = ['sms_send', 'call', 'notification_reply'].includes(action.type);
+        if (!isSend && (level === 'ask' || strictMode()) && !turn.devicesOk?.has(d.id)) {
+          if ((await askUser(turn, { title: (state.settings.language === 'en' ? 'Use the device: ' : 'שימוש במכשיר: ') + (d.name || d.id), items: [deviceActionText(action)] })) === 'deny') return errOut('The user did not allow using this device.');
+          (turn.devicesOk ||= new Set()).add(d.id);
+        }
+        // Sending a message or dialling leaves the device: always confirmed, whatever the level.
+        if (isSend && !turn.sendOk?.has(d.id + JSON.stringify(action))) {
+          if ((await askUser(turn, { title: (state.settings.language === 'en' ? 'Send from the device: ' : 'שליחה מהמכשיר: ') + (d.name || d.id), items: [deviceActionText(action)] })) === 'deny') return errOut('The user did not approve this.');
+          (turn.sendOk ||= new Set()).add(d.id + JSON.stringify(action));
           (turn.devicesOk ||= new Set()).add(d.id);
         }
         setStatus(turn, 'device');
-        const r = await deviceRequest(d.id, bot, action);
+        let r;
+        try { r = await deviceRequest(d.id, bot, action); } catch (e) {
+          const m = String(e.message || e);
+          if (m.startsWith('tool_off')) return errOut(m + '. Tell the user to switch it on in the WitBox app on that device (Devices → Device tools); do not fall back to screenshots for this unless the user asks.');
+          if (m.startsWith('permission_missing')) return errOut(m + '. Tell the user to switch the tool off and on again in the WitBox app on that device to grant it.');
+          if (m.startsWith('unsupported action')) return errOut(m + ' (the WitBox app on that device is too old or is not the full Android edition).');
+          throw e;
+        }
         if (r.image) return { content: [{ type: 'image', data: r.image, mimeType: 'image/jpeg' }, { type: 'text', text: `screenshot ${r.width}x${r.height}` }] };
         return txt(JSON.stringify(r));
       })),
   ];
+}
+
+// Plain-language line for the approval card of a device action.
+function deviceActionText(a = {}) {
+  const he = state.settings.language !== 'en';
+  const clip = (t, n = 140) => { t = String(t || ''); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+  switch (a.type) {
+    case 'sms_list': return he ? 'קריאת הודעות SMS' : 'Read SMS messages';
+    case 'sms_send': return (he ? 'שליחת SMS אל ' : 'Send an SMS to ') + clip(a.to, 30) + ': ' + clip(a.text);
+    case 'call_log': return he ? 'צפייה ביומן השיחות' : 'See the call log';
+    case 'call': return (he ? 'חיוג אל ' : 'Call ') + clip(a.number, 30);
+    case 'contacts': return he ? 'חיפוש באנשי הקשר' : 'Look up contacts';
+    case 'notifications': return he ? 'קריאת התראות והודעות נכנסות' : 'Read notifications and incoming messages';
+    case 'notification_reply': return (he ? 'תשובה להודעה: ' : 'Reply to a message: ') + clip(a.text);
+    case 'calendar': return he ? 'צפייה ביומן' : 'See the calendar';
+    case 'location': return he ? 'קבלת מיקום המכשיר' : 'Get the device location';
+    case 'capabilities': return he ? 'בדיקה אילו כלים מופעלים' : 'Check which tools are on';
+    case 'read_screen': case 'screenshot': return he ? 'צפייה במסך והפעלת המכשיר' : 'See the screen and operate the device';
+    default: return he ? 'צפייה במסך והפעלת המכשיר' : 'See the screen and operate the device';
+  }
 }
 
 // ---------------------------------------------------------------- model routing

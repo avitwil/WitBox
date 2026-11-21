@@ -146,6 +146,10 @@ public class ControlService extends AccessibilityService {
             case "open_app":
                 openApp(a.optString("package", ""));
                 return ok();
+            case "read_screen":
+                return readScreen();
+            case "click_text":
+                return clickText(a.optString("text", ""), a.optInt("index", 0));
             default:
                 throw new Exception("unsupported action: " + type);
         }
@@ -224,6 +228,125 @@ public class ControlService extends AccessibilityService {
             if (scaled != null && scaled != full) scaled.recycle();
             full.recycle();
         }
+    }
+
+    // =====================================================================================
+    // Screen as text: what is on screen, read from the accessibility tree instead of a picture
+    // =====================================================================================
+
+    private static final int MAX_NODES = 500;
+    private static final int MAX_CHARS = 24_000;
+
+    private static String clean(CharSequence cs, int max) {
+        if (cs == null) return "";
+        String s = cs.toString().replaceAll("\\s+", " ").trim();
+        return s.length() > max ? s.substring(0, max) + "…" : s;
+    }
+
+    private static String role(AccessibilityNodeInfo n) {
+        CharSequence c = n.getClassName();
+        String s = c == null ? "" : c.toString();
+        int dot = s.lastIndexOf('.');
+        s = dot >= 0 ? s.substring(dot + 1) : s;
+        if (n.isEditable()) return "input";
+        if (s.contains("Button")) return "button";
+        if (s.contains("CheckBox") || s.contains("Switch") || s.contains("Radio") || n.isCheckable()) return "toggle";
+        if (s.contains("Image")) return "image";
+        return n.isClickable() ? "item" : "text";
+    }
+
+    private void walk(AccessibilityNodeInfo n, float k, Point size, StringBuilder sb, int[] count, int depth) {
+        if (n == null || depth > 60 || count[0] >= MAX_NODES || sb.length() >= MAX_CHARS) return;
+        if (!n.isVisibleToUser()) return;
+        String text = n.isPassword() ? "" : clean(n.getText(), 300);
+        if (n.isShowingHintText()) text = "(" + text + ")";
+        String desc = clean(n.getContentDescription(), 120);
+        boolean actionable = n.isClickable() || n.isEditable() || n.isCheckable();
+        if (!text.isEmpty() || !desc.isEmpty() || n.isEditable() || n.isCheckable()) {
+            android.graphics.Rect r = new android.graphics.Rect();
+            n.getBoundsInScreen(r);
+            if (r.width() > 0 && r.height() > 0 && r.right > 0 && r.bottom > 0 && r.left < size.x && r.top < size.y) {
+                String label = !text.isEmpty() ? text : desc;
+                if (n.isPassword()) label = "(password)";
+                sb.append('[').append(Math.round(r.centerX() / k)).append(',').append(Math.round(r.centerY() / k)).append("] ");
+                sb.append(role(n));
+                if (n.isCheckable()) sb.append(n.isChecked() ? " on" : " off");
+                if (n.isFocused() && n.isEditable()) sb.append(" focused");
+                if (!actionable) {
+                    AccessibilityNodeInfo p = n.getParent();
+                    for (int up = 0; up < 3 && p != null; up++, p = p.getParent()) {
+                        if (p.isClickable()) {
+                            sb.append(" tappable");
+                            break;
+                        }
+                    }
+                } else if (!n.isEditable() && !n.isCheckable() && !"button".equals(role(n))) {
+                    sb.append(" tappable");
+                }
+                sb.append(": ").append(label);
+                if (!text.isEmpty() && !desc.isEmpty() && !desc.equals(text)) sb.append(" (").append(desc).append(')');
+                sb.append('\n');
+                count[0]++;
+            }
+        }
+        for (int i = 0; i < n.getChildCount(); i++) {
+            AccessibilityNodeInfo c = null;
+            try {
+                c = n.getChild(i);
+            } catch (Throwable ignored) {
+            }
+            walk(c, k, size, sb, count, depth + 1);
+        }
+    }
+
+    private JSONObject readScreen() throws Exception {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) throw new Exception("the screen content is not readable right now (try a screenshot)");
+        Point s = realSize();
+        float k = scaleFor(s.x, s.y);
+        StringBuilder sb = new StringBuilder();
+        int[] count = {0};
+        walk(root, k, s, sb, count, 0);
+        JSONObject res = new JSONObject();
+        CharSequence pkg = root.getPackageName();
+        res.put("app", pkg == null ? "" : pkg.toString());
+        res.put("width", Math.round(s.x / k));
+        res.put("height", Math.round(s.y / k));
+        res.put("elements", count[0]);
+        if (count[0] >= MAX_NODES || sb.length() >= MAX_CHARS) res.put("truncated", true);
+        res.put("screen", sb.length() == 0 ? "(no readable text on this screen; use a screenshot)" : sb.toString());
+        return res;
+    }
+
+    /** Taps the n-th visible element whose text or description contains the given text. */
+    private JSONObject clickText(String text, int index) throws Exception {
+        if (text.trim().isEmpty()) throw new Exception("missing 'text'");
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) throw new Exception("the screen content is not readable right now");
+        java.util.List<AccessibilityNodeInfo> found = root.findAccessibilityNodeInfosByText(text);
+        java.util.List<AccessibilityNodeInfo> visible = new java.util.ArrayList<>();
+        java.util.List<AccessibilityNodeInfo> exact = new java.util.ArrayList<>();
+        if (found != null) {
+            for (AccessibilityNodeInfo n : found) {
+                if (n == null || !n.isVisibleToUser()) continue;
+                visible.add(n);
+                String t = clean(n.getText(), 400), d = clean(n.getContentDescription(), 400);
+                if (t.equalsIgnoreCase(text.trim()) || d.equalsIgnoreCase(text.trim())) exact.add(n);
+            }
+        }
+        java.util.List<AccessibilityNodeInfo> pick = exact.isEmpty() ? visible : exact;
+        if (pick.isEmpty()) throw new Exception("no visible element with the text '" + text + "' (use read_screen)");
+        if (index < 0 || index >= pick.size()) throw new Exception("index out of range: " + pick.size() + " match(es)");
+        AccessibilityNodeInfo n = pick.get(index);
+        android.graphics.Rect r = new android.graphics.Rect();
+        n.getBoundsInScreen(r);
+        AccessibilityNodeInfo target = n;
+        for (int i = 0; i < 6 && target != null && !target.isClickable(); i++) target = target.getParent();
+        boolean done = target != null && target.isClickable() && target.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+        if (!done) press(r.centerX(), r.centerY(), 60);
+        settle();
+        Thread.sleep(250);
+        return new JSONObject().put("ok", true).put("matches", pick.size());
     }
 
     // =====================================================================================

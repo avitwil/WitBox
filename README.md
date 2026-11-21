@@ -95,6 +95,7 @@ browser on your tailnet). Start a task at your desk, follow it from your phone, 
 - **Vault** — saved logins are encrypted on your server and typed for the bot; the model never sees a password.
 - **Artifacts** — boards, sheets, documents and diagrams open in a panel next to the chat.
 - **Device control** — optionally let a bot operate the phone or PC you are holding; approved on that device only.
+- **Phone tools (Android, full edition)** — SMS, calls, contacts, calendar, location and incoming messages of any app as text instead of screenshots; one switch per tool on the phone, verification codes hidden, and every outgoing SMS, call or reply is approved in a chat card first.
 - Hebrew and English interface, light and dark themes.
 
 ## How WitBox compares
@@ -192,7 +193,7 @@ The installed server serves the apps itself — open **Settings → Updates** in
 | Device | File | Notes |
 |---|---|---|
 | Android | `WitBox.apk` | Allow installing from this source, open, enter the server address, allow notifications. |
-| Android (full) | `WitBox-full.apk` | Adds device control through an accessibility service. Play Protect blocks such apps from the browser — install with `adb` (`apps/android/install-full.sh`). |
+| Android (full) | `WitBox-full.apk` | Adds device control through an accessibility service, and direct device tools: SMS, call log, dialling, contacts, calendar, location and the notifications of other apps (as text, no screenshots). Each tool is a switch on the device, off by default. Play Protect blocks such apps from the browser and Android restricts their permissions when sideloaded — install with `adb` (`apps/android/install-full.sh`). |
 | Windows | `WitBox-Setup.exe` or the portable `WitBox-windows-x64.exe` | Lives in the system tray, shows notifications. |
 | Linux | `witbox-linux-x86_64` | `chmod +x witbox-linux-x86_64 && ./witbox-linux-x86_64` (needs WebKitGTK 4.1). |
 | Any browser | your server address | Works on every device signed in to your tailnet. |

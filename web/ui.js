@@ -211,7 +211,7 @@ export const native = {
   platform: /WitBoxApp\/[\d.]+ \((\w+)\)/.exec(navigator.userAgent)?.[1] || null,
   call(cmd, args = {}) {
     if (!channel) return Promise.resolve({ error: 'unsupported' });
-    return new Promise((res) => { const id = nid++; waits.set(id, res); setTimeout(() => { if (waits.delete(id)) res({ error: 'timeout' }); }, cmd === 'setPermission' ? 70000 : 15000); channel(JSON.stringify({ id, cmd, args })); });
+    return new Promise((res) => { const id = nid++; waits.set(id, res); setTimeout(() => { if (waits.delete(id)) res({ error: 'timeout' }); }, ['setPermission', 'setTool', 'setHideCodes'].includes(cmd) ? 180000 : 15000); channel(JSON.stringify({ id, cmd, args })); });
   },
   on(ev, f) { (listeners.get(ev) || listeners.set(ev, new Set()).get(ev)).add(f); return () => listeners.get(ev).delete(f); },
 };

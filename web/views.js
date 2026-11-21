@@ -237,6 +237,31 @@ export function inbox() {
 }
 
 // ---------------------------------------------------------------- devices
+// Direct device tools of the full Android app: each one is a switch stored on the device itself.
+const TOOL_ROWS = () => [
+  ['sms', T('קריאת הודעות SMS', 'Read SMS messages'), T('רשימת ההודעות כטקסט: ממי, מתי ומה נכתב', 'The message list as text: who, when and what')],
+  ['sms_send', T('שליחת SMS', 'Send SMS'), T('כל שליחה מאושרת קודם בכרטיס בצ׳אט', 'Every message is first approved in a chat card')],
+  ['calls', T('יומן שיחות', 'Call log'), T('שיחות שלא נענו, נכנסות ויוצאות', 'Missed, incoming and outgoing calls')],
+  ['dial', T('חיוג', 'Dialling'), T('כל חיוג מאושר קודם בכרטיס בצ׳אט', 'Every call is first approved in a chat card')],
+  ['contacts', T('אנשי קשר', 'Contacts'), T('שם במקום מספר, וחיפוש איש קשר', 'Names instead of numbers, and contact lookup')],
+  ['notifications', T('הודעות מאפליקציות אחרות', 'Messages from other apps'), T('קריאת התראות נכנסות (וואטסאפ, טלגרם ועוד) מרגע ההפעלה', 'Reads incoming notifications (WhatsApp, Telegram…) from now on')],
+  ['notif_reply', T('מענה להודעות', 'Reply to messages'), T('תשובה דרך ההתראה, אחרי אישור בכרטיס בצ׳אט', 'Answers through the notification, after a chat card approval')],
+  ['calendar', T('יומן', 'Calendar'), T('האירועים הקרובים ביומן שבמכשיר', 'Upcoming events of the device calendar')],
+  ['location', T('מיקום', 'Location'), T('המיקום הנוכחי של המכשיר', 'Where the device is now')],
+];
+function toolsCard(info) {
+  const box = h('div');
+  let st = { tools: info.tools, hideCodes: info.hideCodes !== false };
+  const take = (r) => { if (r && r.tools) st = { tools: r.tools, hideCodes: r.hideCodes !== false }; };
+  const draw = () => box.replaceChildren(
+    h('h3', {}, T('כלי המכשיר', 'Device tools')),
+    h('p', { class: 'small muted' }, T('גישה ישירה במקום צילומי מסך. כל כלי כבוי עד שתפעיל אותו כאן, והוא זמין רק לבוטים שהרשית למטה. ההגדרות נשמרות במכשיר הזה בלבד.', 'Direct access instead of screenshots. Every tool is off until you switch it on here, and only the bots you permit below can use it. Stored on this device only.')),
+    h('div', { class: 'card' }, ...TOOL_ROWS().map(([k, title, sub]) => { const t = st.tools[k] || {}; const need = t.on && !t.granted; return h('div', { class: 'trow' }, h('div', { class: 'grow' }, h('b', {}, title), h('div', { class: 'tiny' }, need ? T('חסרה הרשאה במכשיר. כבה והפעל שוב כדי לתת אותה.', 'The Android permission is missing. Switch off and on again to grant it.') : sub)), need ? h('span', { class: 'pill acc' }, '!') : null, sw(!!t.on, async (on) => { const r = await native.call('setTool', { name: k, on }); take(r); if (r.error) toast(r.error === 'denied' ? T('לא אושר', 'Not approved') : r.error === 'permission_denied' ? T('ההרשאה לא ניתנה במכשיר', 'The permission was not granted') : r.error === 'unsupported' ? T('לא נתמך בגרסה הזו של האפליקציה', 'Not supported by this app version') : r.error); draw(); })); }),
+      h('div', { class: 'trow' }, h('div', { class: 'grow' }, h('b', {}, T('הסתרת קודי אימות', 'Hide verification codes')), h('div', { class: 'tiny' }, T('הודעות והתראות שנראות כמו קוד חד-פעמי (למשל מהבנק) לא מועברות לבוטים', 'Messages that look like one-time codes (for example from your bank) are not passed to bots'))), sw(st.hideCodes, async (hide) => { const r = await native.call('setHideCodes', { hide }); take(r); if (r.error) toast(r.error === 'denied' ? T('לא אושר', 'Not approved') : r.error); draw(); }))));
+  native.on('toolsChanged', (r) => { if (box.isConnected) { take(r); draw(); } });
+  draw();
+  return box;
+}
 export function devicesPage() {
   const local = h('div');
   (async () => {
@@ -245,14 +270,15 @@ export function devicesPage() {
     const lv = () => [['always', T('תמיד', 'Always')], ['ask', T('שאל אותי', 'Ask me')], ['never', T('אף פעם', 'Never')]];
     local.replaceChildren(h('div', { class: 'card' }, h('div', { class: 'row' }, h('div', { class: 'grow' }, h('b', {}, T('המכשיר הזה: ', 'This device: ') + (info.name || '')), h('div', { class: 'tiny' }, (info.platform || '') + ' · v' + (info.appVersion || '') + ' · ' + T('ההרשאות נשמרות רק על המכשיר הזה', 'permissions are stored on this device only'))), info.controlAvailable ? (info.controlEnabled ? h('span', { class: 'pill ok' }, T('שליטה זמינה', 'Control ready')) : h('button', { class: 'btn sm acc', onclick: () => native.call('openControlSetup') }, T('הפעל שירות שליטה', 'Enable control'))) : h('span', { class: 'pill' }, info.platform === 'android' ? T('שליטה: רק בגרסה המלאה', 'Control: full edition only') : T('שליטה לא נתמכת', 'No control'))),
       h('div', { class: 'row', style: { marginTop: '8px' } }, h('button', { class: 'btn sm', onclick: () => native.call('changeServer') }, T('שנה כתובת שרת', 'Change server')))),
-      h('h3', {}, T('אילו בוטים רשאים לשלוט במכשיר הזה', 'Which bots may control this device')),
+      ...(info.tools ? [toolsCard(info)] : []),
+      h('h3', {}, T('אילו בוטים רשאים להשתמש במכשיר הזה', 'Which bots may use this device')),
       ...S.bots.map((b) => h('div', { class: 'card' }, h('div', { class: 'row wrap' }, avatar(b, 'sm'), h('div', { class: 'grow' }, h('b', {}, b.name), h('div', { class: 'tiny' }, b.title || '')), (() => { const w = h('div', { class: 'seg' }); const draw = (v) => w.replaceChildren(...lv().map(([k, l]) => h('button', { class: v === k ? 'on' : '', onclick: async () => { const r = await native.call('setPermission', { botId: b.id, level: k, botName: b.name }); if (r.error) toast(r.error === 'denied' ? T('לא אושר', 'Not approved') : r.error); else draw(k); } }, l))); draw(perms[b.id] || 'never'); return w; })()))));
   })();
   const dl = (file, title, sub) => h('a', { class: 'attach', style: { maxWidth: '100%', marginBottom: '8px' }, href: '/downloads/' + file, download: file }, h('span', { class: 'fi' }, icon('dl')), h('span', {}, h('b', {}, title), h('small', {}, sub)));
   return [pageHead(T('מכשירים', 'Devices')), h('div', { class: 'page' }, local,
     h('h3', {}, T('כל המכשירים המחוברים', 'All connected devices')), ...(S.devices.length ? S.devices.map((d) => h('div', { class: 'card' }, h('div', { class: 'row' }, h('div', { class: 'grow' }, h('b', {}, d.name), h('div', { class: 'tiny' }, d.platform + ' · ' + T('נראה לאחרונה ', 'last seen ') + fmtTime(d.lastSeen))), d.online ? h('span', { class: 'pill ok' }, T('מחובר', 'online')) : h('span', { class: 'pill' }, T('לא מחובר', 'offline')), d.notify ? h('span', { class: 'pill acc' }, '🔔') : null, ibtn('trash', T('שכח', 'Forget'), async () => { await del('/devices/' + d.id); S.devices = S.devices.filter((x) => x.id !== d.id); rerender(); })))) : [h('p', { class: 'muted small' }, T('עדיין אין מכשירים עם האפליקציה.', 'No devices with the app yet.'))]),
     h('h3', {}, T('הורדת האפליקציות (דרך Tailscale בלבד)', 'Download the apps (Tailscale only)')),
-    dl('WitBox.apk', 'Android — WitBox.apk', T('טלפון וטאבלט', 'Phone and tablet')), dl('WitBox-full.apk', 'Android — WitBox-full.apk', T('כולל שליטת בוטים בטלפון; התקנה רק דרך adb', 'With device control; install via adb only')), dl('WitBox-windows-x64.exe', 'Windows — WitBox-windows-x64.exe', T('קובץ יחיד, ללא התקנה', 'Single file, no install')), dl('witbox-linux-x86_64', 'Linux — witbox-linux-x86_64', 'x86_64'))];
+    dl('WitBox.apk', 'Android — WitBox.apk', T('טלפון וטאבלט', 'Phone and tablet')), dl('WitBox-full.apk', 'Android — WitBox-full.apk', T('שליטת בוטים בטלפון וכלי מכשיר (SMS, שיחות, התראות); התקנה רק דרך adb', 'Device control and device tools (SMS, calls, notifications); install via adb only')), dl('WitBox-windows-x64.exe', 'Windows — WitBox-windows-x64.exe', T('קובץ יחיד, ללא התקנה', 'Single file, no install')), dl('witbox-linux-x86_64', 'Linux — witbox-linux-x86_64', 'x86_64'))];
 }
 
 // ---------------------------------------------------------------- settings

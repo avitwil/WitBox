@@ -168,6 +168,7 @@ home = f'''
     {card('folder', 'תיקייה משותפת לכל בוט', 'A shared folder per bot', 'הקבצים שהעליתם, הפרויקטים שהבוט בונה והסשנים שלו מופיעים על שולחן העבודה שלו. קוד נכתב שם ורץ רק במחשב של הבוט.', 'Your uploads, the projects the bot builds and its sessions appear on its desktop. Code is written there and runs only on the bot\'s computer.')}
     {card('lock', 'כספת מוצפנת', 'Encrypted vault', 'פרטי התחברות נשמרים מוצפנים על השרת שלכם ומוקלדים עבור הבוט.', 'Logins are stored encrypted on your server and typed for the bot.')}
     {card('hand', 'שליטה במכשיר', 'Device control', 'אפשר לתת לבוט להפעיל את הטלפון או המחשב שבידכם, באישור מהמכשיר עצמו.', 'Let a bot operate the phone or PC in your hands, approved on that device.')}
+    {card('phone', 'כלי הטלפון', 'Phone tools', 'באנדרואיד הבוט קורא SMS, שיחות, אנשי קשר, יומן והודעות נכנסות מכל אפליקציה כטקסט, בלי צילומי מסך. כל כלי הוא מתג במכשיר, וקודי אימות מוסתרים.', 'On Android a bot reads SMS, calls, contacts, the calendar and incoming messages of any app as text, without screenshots. Every tool is a switch on the device, and verification codes are hidden.')}
   </div>
 </div></section>
 

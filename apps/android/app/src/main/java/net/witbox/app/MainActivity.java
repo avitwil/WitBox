@@ -166,6 +166,8 @@ public class MainActivity extends Activity {
         if (webView != null) webView.onResume();
         // The service may have been killed while we were in the background.
         NotifyService.start(this);
+        // Permissions may have been changed in the system settings while we were away.
+        if (BuildConfig.CONTROL) emit("toolsChanged", toolsReply());
     }
 
     @Override
@@ -1072,6 +1074,104 @@ public class MainActivity extends Activity {
         }
     }
 
+    private JSONObject toolsReply() {
+        JSONObject o = new JSONObject();
+        put(o, "tools", DeviceTools.state(this));
+        put(o, "hideCodes", Prefs.hideCodes(this));
+        return o;
+    }
+
+    private String toolLabel(String tool) {
+        int id = getResources().getIdentifier("tool_" + tool, "string", getPackageName());
+        return id == 0 ? tool : getString(id);
+    }
+
+    /** Native yes/no dialog for anything that widens what bots may do; a page cannot answer it. */
+    private void confirmNative(final Object id, String title, String message, final Runnable onAllow) {
+        if (destroyed || isFinishing() || (raiseDialog != null && raiseDialog.isShowing())) {
+            replyError(id, "denied");
+            return;
+        }
+        final boolean[] answered = {false};
+        try {
+            AlertDialog d = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setIcon(R.mipmap.ic_launcher)
+                    .setTitle(title)
+                    .setMessage(message)
+                    .setPositiveButton(R.string.allow, (dlg, w) -> {
+                        if (answered[0]) return;
+                        answered[0] = true;
+                        if (!destroyed) onAllow.run();
+                    })
+                    .setNegativeButton(R.string.cancel, (dlg, w) -> {
+                        if (answered[0]) return;
+                        answered[0] = true;
+                        replyError(id, "denied");
+                    })
+                    .create();
+            d.setCanceledOnTouchOutside(false);
+            d.setOnDismissListener(dlg -> {
+                if (raiseDialog == dlg) raiseDialog = null;
+                if (!answered[0]) {
+                    answered[0] = true;
+                    replyError(id, "denied");
+                }
+            });
+            raiseDialog = d;
+            d.show();
+        } catch (Throwable t) {
+            raiseDialog = null;
+            if (!answered[0]) {
+                answered[0] = true;
+                replyError(id, "denied");
+            }
+        }
+    }
+
+    private void enableTool(final Object id, final String tool) {
+        if (DeviceTools.usesListener(tool)) {
+            Prefs.setTool(this, tool, true);
+            if (!DeviceTools.listenerEnabled(this)) {
+                try {
+                    startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
+                    Toast.makeText(this, R.string.listener_hint, Toast.LENGTH_LONG).show();
+                } catch (Throwable t) {
+                    Log.w(TAG, "cannot open notification access settings: " + t);
+                }
+            }
+            reply(id, toolsReply());
+            return;
+        }
+        final Runnable finish = () -> {
+            if (destroyed) return;
+            if (DeviceTools.granted(this, tool)) {
+                Prefs.setTool(this, tool, true);
+                reply(id, toolsReply());
+                return;
+            }
+            JSONObject o = toolsReply();
+            put(o, "error", "permission_denied");
+            reply(id, o);
+            try {
+                // Denied twice, or blocked as a "restricted setting": only the app's settings page can grant it.
+                startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:" + getPackageName())));
+                Toast.makeText(this, R.string.perm_hint, Toast.LENGTH_LONG).show();
+            } catch (Throwable ignored) {
+            }
+        };
+        requestPerms(DeviceTools.permsFor(tool), () -> {
+            if (DeviceTools.LOCATION.equals(tool) && Build.VERSION.SDK_INT >= 29
+                    && (granted(Manifest.permission.ACCESS_FINE_LOCATION) || granted(Manifest.permission.ACCESS_COARSE_LOCATION))
+                    && !granted(Manifest.permission.ACCESS_BACKGROUND_LOCATION)) {
+                Toast.makeText(this, R.string.location_hint, Toast.LENGTH_LONG).show();
+                requestPerms(new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION}, finish);
+            } else {
+                finish.run();
+            }
+        });
+    }
+
     private boolean controlEnabled() {
         if (ControlService.get() != null) return true;
         try {
@@ -1121,6 +1221,10 @@ public class MainActivity extends Activity {
                     o.put("appVersion", BuildConfig.VERSION_NAME);
                     o.put("controlAvailable", BuildConfig.CONTROL);
                     o.put("controlEnabled", controlEnabled());
+                    if (BuildConfig.CONTROL) {
+                        o.put("tools", DeviceTools.state(this));
+                        o.put("hideCodes", Prefs.hideCodes(this));
+                    }
                     reply(id, o);
                     break;
                 }
@@ -1157,6 +1261,32 @@ public class MainActivity extends Activity {
                     } catch (Throwable t) {
                         replyError(id, "cannot open accessibility settings");
                     }
+                    break;
+                }
+                case "setTool": {
+                    final String tool = args.optString("name", "");
+                    if (!BuildConfig.CONTROL || !DeviceTools.isTool(tool)) { replyError(id, "unsupported"); break; }
+                    if (!args.optBoolean("on", false)) {
+                        Prefs.setTool(this, tool, false);
+                        reply(id, toolsReply());
+                        break;
+                    }
+                    // Switching a tool on is a privilege raise: confirmed natively, then Android's own prompt.
+                    confirmNative(id, getString(R.string.tool_confirm_title),
+                            getString(R.string.tool_confirm_msg, toolLabel(tool)), () -> enableTool(id, tool));
+                    break;
+                }
+                case "setHideCodes": {
+                    if (!BuildConfig.CONTROL) { replyError(id, "unsupported"); break; }
+                    if (args.optBoolean("hide", true)) {
+                        Prefs.setHideCodes(this, true);
+                        reply(id, toolsReply());
+                        break;
+                    }
+                    confirmNative(id, getString(R.string.codes_confirm_title), getString(R.string.codes_confirm_msg), () -> {
+                        Prefs.setHideCodes(this, false);
+                        reply(id, toolsReply());
+                    });
                     break;
                 }
                 case "startListening": {

@@ -93,6 +93,20 @@ Actions (coordinates are in pixels of the returned screenshot):
   on Android `click` = tap, `drag` = swipe, `type` = set text on focused node (ACTION_SET_TEXT / paste),
   `key` with Return = IME enter action if possible.
 Every non-screenshot action returns `{ok:true}`.
+- Android full edition, screen as text (accessibility service): `{"type":"read_screen"}` → `{app, width, height, elements, screen}`
+  where `screen` is one line per visible element: `[x,y] role[ tappable]: text` (coordinates in screenshot pixels);
+  `{"type":"click_text","text":"...","index":0}` taps the n-th visible element containing the text.
+- Android full edition, direct tools (no accessibility service needed). Each tool has its own switch on the device
+  (off by default) plus its Android permission; errors `tool_off: ...` / `permission_missing: ...`:
+  `capabilities` → `{tools_on, tools_off, screen_control, hide_codes}` ·
+  `sms_list {limit, box: inbox|sent|all, from, query, since_hours, unread}` · `sms_send {to, text}` ·
+  `call_log {limit, kind: all|missed|incoming|outgoing, since_hours}` · `call {number}` · `contacts {query, limit}` ·
+  `notifications {limit, app, query, since_hours}` (other apps' notifications, kept in memory only) ·
+  `notification_reply {key, text}` (key = `reply_key` of a listed notification) · `calendar {days, back_days, limit}` · `location`.
+  Messages that look like verification codes are replaced by a placeholder unless the user switched that off on the device.
+  The server shows an approval card in chat before every `sms_send`, `call` and `notification_reply`.
+  Bridge commands for the settings page: `getDeviceInfo` adds `tools: {name: {on, granted}}` and `hideCodes`;
+  `setTool {name, on}` and `setHideCodes {hide}` (raising is confirmed in a native dialog); event `toolsChanged`.
 Android implementation: AccessibilityService (`takeScreenshot` API 30+, `dispatchGesture`,
 `performGlobalAction`). Desktop: native screen capture + input injection (Windows: GDI/SendInput;
 Linux: X11).
